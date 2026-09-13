@@ -54,12 +54,13 @@ export default function ClientesPage() {
       </form>
       {error && <p style={{ color: "crimson" }}>{error}</p>}
       <table>
-        <thead><tr><th>Nombre</th><th>Teléfono</th>{puedeModificar && <th></th>}</tr></thead>
+        <thead><tr><th>Nombre</th><th>Teléfono</th><th></th>{puedeModificar && <th></th>}</tr></thead>
         <tbody>
           {clientes.map((c) => (
             <tr key={c.id}>
               <td>{c.nombre}</td>
               <td>{c.telefono ?? "—"}</td>
+              <td><a href={`/clientes/${c.id}`}>Cuenta corriente</a></td>
               {puedeModificar && <td><button onClick={() => editar(c)}>Editar</button></td>}
             </tr>
           ))}
