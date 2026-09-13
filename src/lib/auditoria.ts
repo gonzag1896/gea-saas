@@ -28,7 +28,8 @@ export type AccionAuditoria =
   | "DEVOLUCION_COMPRA"
   | "VENTA_CONFIRMA"
   | "VENTA_ANULA"
-  | "DEVOLUCION_VENTA";
+  | "DEVOLUCION_VENTA"
+  | "STOCK_AJUSTE";
 
 export async function auditar(params: {
   accion: AccionAuditoria;

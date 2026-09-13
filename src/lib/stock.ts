@@ -1,4 +1,6 @@
 import type { Prisma, TipoMovimientoStock, OrigenMovimientoStock } from "@prisma/client";
+import { prisma } from "@/lib/db";
+import { auditar } from "@/lib/auditoria";
 
 type TxClient = Prisma.TransactionClient;
 
@@ -7,9 +9,15 @@ type TxClient = Prisma.TransactionClient;
 // dejarla propagar dentro de la misma transacción para que todo lo demás
 // (la compra/venta que la disparó) se revierta también.
 export class StockInsuficienteError extends Error {
+  readonly productoId: string;
   constructor(productoId: string) {
-    super(`Stock insuficiente para el producto ${productoId}.`);
+    // Sin el id crudo en el mensaje: en todas las pantallas donde se ve
+    // este error el usuario ya está parado sobre el producto en cuestión
+    // (la línea de la venta, la página del producto) — mostrar el id
+    // interno no agrega información, solo ruido.
+    super("Stock insuficiente para completar esta operación.");
     this.name = "StockInsuficienteError";
+    this.productoId = productoId;
   }
 }
 
@@ -63,5 +71,40 @@ export async function aplicarMovimientoStock(tx: TxClient, params: ParametrosMov
       origenId: params.origenId,
       registradoPorUsuarioId: params.registradoPorUsuarioId,
     },
+  });
+}
+
+// AjusteStockProducto del sistema original: la única vía para corregir
+// stock "a mano" (diferencia de inventario, rotura, etc.) — a diferencia
+// de compras/ventas, acá no hay nada más que ajustar, así que la
+// transacción es solo aplicarMovimientoStock + su auditoría.
+export async function registrarAjusteStock(
+  ferreteriaId: string,
+  productoId: string,
+  tipo: "AJUSTE_POSITIVO" | "AJUSTE_NEGATIVO",
+  cantidad: number,
+  motivo: string,
+  usuarioId: string,
+) {
+  await prisma.$transaction(async (tx) => {
+    await aplicarMovimientoStock(tx, {
+      ferreteriaId,
+      productoId,
+      tipo,
+      cantidad,
+      fecha: new Date(),
+      motivo,
+      origenTipo: "AJUSTE",
+      registradoPorUsuarioId: usuarioId,
+    });
+  });
+
+  await auditar({
+    accion: "STOCK_AJUSTE",
+    usuarioId,
+    ferreteriaId,
+    entidad: "Producto",
+    entidadId: productoId,
+    detalle: { tipo, cantidad, motivo },
   });
 }

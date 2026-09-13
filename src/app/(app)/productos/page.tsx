@@ -150,7 +150,10 @@ export default function ProductosPage() {
               )}
               <td>{p.stockActual} (mín. {p.stockMinimo})</td>
               <td>{p.activo ? "Activo" : "Inactivo"}</td>
-              <td><button onClick={() => toggleActivo(p)}>{p.activo ? "Desactivar" : "Activar"}</button></td>
+              <td>
+                <a href={`/productos/${p.id}`}>Movimientos</a>{" "}
+                <button onClick={() => toggleActivo(p)}>{p.activo ? "Desactivar" : "Activar"}</button>
+              </td>
             </tr>
           ))}
         </tbody>
