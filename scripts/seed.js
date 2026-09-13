@@ -83,6 +83,34 @@ async function seedFerreteria({ nombre, slug, duenoEmail, duenoNombre }) {
   return { ferreteria, usuario };
 }
 
+async function seedUsuarioMultiFerreteria(ferreterias) {
+  const passwordHash = await bcrypt.hash(PASSWORD_DEMO, 12);
+  const usuario = await prisma.usuario.upsert({
+    where: { email: "multi@demo.gea" },
+    update: {},
+    create: { email: "multi@demo.gea", name: "Usuario Multi-Ferretería", passwordHash, estado: "ACTIVO" },
+  });
+
+  for (const ferreteria of ferreterias) {
+    await prisma.ferreteriaUsuario.upsert({
+      where: { ferreteriaId_usuarioId: { ferreteriaId: ferreteria.id, usuarioId: usuario.id } },
+      update: {},
+      create: { ferreteriaId: ferreteria.id, usuarioId: usuario.id, rol: "CAJERO" },
+    });
+  }
+
+  return usuario;
+}
+
+async function seedSuperAdmin() {
+  const passwordHash = await bcrypt.hash(PASSWORD_DEMO, 12);
+  return prisma.usuario.upsert({
+    where: { email: "super@demo.gea" },
+    update: {},
+    create: { email: "super@demo.gea", name: "Super Admin Demo", passwordHash, estado: "ACTIVO", isSuperAdmin: true },
+  });
+}
+
 async function main() {
   const a = await seedFerreteria({
     nombre: "Ferretería Demo A",
@@ -97,9 +125,16 @@ async function main() {
     duenoNombre: "Dueño Demo B",
   });
 
+  // Para probar a mano el selector (≥2 membresías) y el modo soporte del
+  // Super Admin — el propósito específico de Fase 4.
+  const multi = await seedUsuarioMultiFerreteria([a.ferreteria, b.ferreteria]);
+  const superAdmin = await seedSuperAdmin();
+
   console.log("Seed OK:");
   console.log(`  ${a.ferreteria.nombre} (${a.ferreteria.id}) — ${a.usuario.email} / ${PASSWORD_DEMO}`);
   console.log(`  ${b.ferreteria.nombre} (${b.ferreteria.id}) — ${b.usuario.email} / ${PASSWORD_DEMO}`);
+  console.log(`  Multi-ferretería (A + B) — ${multi.email} / ${PASSWORD_DEMO}`);
+  console.log(`  Super Admin — ${superAdmin.email} / ${PASSWORD_DEMO}`);
 }
 
 main()

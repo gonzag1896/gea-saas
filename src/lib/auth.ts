@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { authConfig } from "@/lib/auth.config";
 import { dentroDelLimite, obtenerIp } from "@/lib/rate-limit";
 import { auditar } from "@/lib/auditoria";
+import { resolverFerreteriaInicial } from "@/lib/ferreteria-selector";
 
 // Freno de fuerza bruta por cuenta. Corto a propósito: alcanza para que
 // probar contraseñas al voleo deje de ser viable, y evita que alguien deje
@@ -97,30 +98,82 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     // necesita el middleware (Fase 4) y no toca la base.
     ...authConfig.callbacks,
 
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
+      // Modo soporte del Super Admin: entra a una ferretería para mirarla
+      // sin pedirle la contraseña a nadie, y queda marcado como soporte —
+      // el resto de la app (Fase 5+) le bloquea cualquier escritura
+      // mientras dura. `salirDeSoporte` lo devuelve a su estado sin
+      // ferretería.
+      if (trigger === "update" && token.isSuperAdmin) {
+        const datos = session as { soporteFerreteriaId?: string; salirDeSoporte?: boolean } | undefined;
+
+        if (datos?.salirDeSoporte) {
+          if (token.ferreteriaId) {
+            await auditar({ accion: "IMPERSONACION_FIN", usuarioId: token.id as string, ferreteriaId: token.ferreteriaId as string });
+          }
+          token.ferreteriaId = null;
+          token.ferreteriaNombre = null;
+          token.rol = null;
+          token.soporte = false;
+          return token;
+        }
+
+        if (datos?.soporteFerreteriaId) {
+          const ferreteria = await prisma.ferreteria.findUnique({ where: { id: datos.soporteFerreteriaId } });
+          if (ferreteria) {
+            await auditar({ accion: "IMPERSONACION_INICIO", usuarioId: token.id as string, ferreteriaId: ferreteria.id });
+            token.ferreteriaId = ferreteria.id;
+            token.ferreteriaNombre = ferreteria.nombre;
+            token.rol = "DUENO";
+            token.soporte = true;
+          }
+          return token;
+        }
+      }
+
+      // Selector de ferretería activa: el cliente propone un ferreteriaId,
+      // pero nunca se confía en él — se verifica que exista una membresía
+      // ACTIVA real antes de aceptarlo. Si no es válida, el token queda
+      // como estaba.
+      if (trigger === "update" && !token.isSuperAdmin) {
+        const datos = session as { ferreteriaId?: string } | undefined;
+        if (datos?.ferreteriaId) {
+          const membresia = await prisma.ferreteriaUsuario.findFirst({
+            where: { usuarioId: token.id as string, ferreteriaId: datos.ferreteriaId, estado: "ACTIVO" },
+            include: { ferreteria: true },
+          });
+          if (membresia) {
+            token.ferreteriaId = membresia.ferreteriaId;
+            token.ferreteriaNombre = membresia.ferreteria.nombre;
+            token.rol = membresia.rol;
+          }
+        }
+        return token;
+      }
+
       if (user) {
         const dbUser = await prisma.usuario.findUnique({
           where: { id: user.id },
           include: {
-            ferreterias: {
-              where: { estado: "ACTIVO" },
-              include: { ferreteria: true },
-              orderBy: { createdAt: "asc" },
-              take: 1,
-            },
+            ferreterias: { where: { estado: "ACTIVO" }, include: { ferreteria: true } },
           },
         });
 
         token.id = user.id;
         token.isSuperAdmin = dbUser?.isSuperAdmin ?? false;
 
-        // Primera membresía activa como ferretería inicial. Alguien con más
-        // de una recién puede elegir entre ellas cuando exista el selector
-        // (Fase 4) — acá solo se resuelve un valor de arranque razonable.
-        const membresia = dbUser?.ferreterias[0];
-        token.ferreteriaId = membresia?.ferreteriaId ?? null;
-        token.ferreteriaNombre = membresia?.ferreteria.nombre ?? null;
-        token.rol = membresia?.rol ?? null;
+        // Con una sola ferretería activa se auto-selecciona; con cero o
+        // con más de una, queda sin definir y la resuelve la pantalla de
+        // selección (ver src/app/seleccionar-ferreteria).
+        const membresias = (dbUser?.ferreterias ?? []).map((m) => ({
+          ferreteriaId: m.ferreteriaId,
+          ferreteriaNombre: m.ferreteria.nombre,
+          rol: m.rol,
+        }));
+        const inicial = resolverFerreteriaInicial(membresias);
+        token.ferreteriaId = inicial?.ferreteriaId ?? null;
+        token.ferreteriaNombre = inicial?.ferreteriaNombre ?? null;
+        token.rol = inicial?.rol ?? null;
         token.soporte = false;
 
         // Marca de emisión: se compara contra passwordCambiadoAt para

@@ -19,7 +19,9 @@ export type AccionAuditoria =
   | "LOGOUT"
   | "PASSWORD_CAMBIO"
   | "PASSWORD_RESET_SOLICITADO"
-  | "PASSWORD_RESET_COMPLETADO";
+  | "PASSWORD_RESET_COMPLETADO"
+  | "IMPERSONACION_INICIO"
+  | "IMPERSONACION_FIN";
 
 export async function auditar(params: {
   accion: AccionAuditoria;
