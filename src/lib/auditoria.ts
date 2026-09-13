@@ -25,7 +25,10 @@ export type AccionAuditoria =
   | "PRODUCTO_PRECIO_CAMBIO"
   | "COMPRA_CONFIRMA"
   | "COMPRA_ANULA"
-  | "DEVOLUCION_COMPRA";
+  | "DEVOLUCION_COMPRA"
+  | "VENTA_CONFIRMA"
+  | "VENTA_ANULA"
+  | "DEVOLUCION_VENTA";
 
 export async function auditar(params: {
   accion: AccionAuditoria;

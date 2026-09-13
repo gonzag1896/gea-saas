@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/db";
 import { crearFerreteriaConUsuario, borrarFixture } from "@/lib/test-fixtures";
-import { confirmarCompra, anularCompra, registrarDevolucionCompra, CompraEstadoInvalidoError, CantidadInvalidaError } from "@/lib/compras";
+import { confirmarCompra, anularCompra, registrarDevolucionCompra } from "@/lib/compras";
+import { EstadoInvalidoError, CantidadInvalidaError } from "@/lib/errores-dominio";
 import { StockInsuficienteError } from "@/lib/stock";
 
 describe("compras — confirmar, anular, devolución", () => {
@@ -67,7 +68,7 @@ describe("compras — confirmar, anular, devolución", () => {
   it("confirmar dos veces la misma compra falla la segunda vez, sin duplicar el stock", async () => {
     const compra = await crearCompraPendiente(4, 5);
     await confirmarCompra(ferreteria.id, compra.id, dueno.id);
-    await expect(confirmarCompra(ferreteria.id, compra.id, dueno.id)).rejects.toThrow(CompraEstadoInvalidoError);
+    await expect(confirmarCompra(ferreteria.id, compra.id, dueno.id)).rejects.toThrow(EstadoInvalidoError);
   });
 
   it("confirmaciones simultáneas de la misma compra: una sola aplica el stock", async () => {
@@ -113,7 +114,7 @@ describe("compras — confirmar, anular, devolución", () => {
   it("anular dos veces la misma compra falla la segunda vez", async () => {
     const compra = await crearCompraPendiente(2, 5);
     await anularCompra(ferreteria.id, compra.id, dueno.id, "motivo");
-    await expect(anularCompra(ferreteria.id, compra.id, dueno.id, "motivo")).rejects.toThrow(CompraEstadoInvalidoError);
+    await expect(anularCompra(ferreteria.id, compra.id, dueno.id, "motivo")).rejects.toThrow(EstadoInvalidoError);
   });
 
   it("anular una compra confirmada NO puede dejar el stock negativo: si ya se vendió, la anulación falla y la compra sigue confirmada", async () => {
@@ -166,6 +167,6 @@ describe("compras — confirmar, anular, devolución", () => {
   it("no se puede devolver mercadería de una compra que no está confirmada", async () => {
     const compra = await crearCompraPendiente(4, 5);
     const detalle = await prisma.compraDetalle.findFirstOrThrow({ where: { compraId: compra.id } });
-    await expect(registrarDevolucionCompra(ferreteria.id, detalle.id, 1, undefined, dueno.id)).rejects.toThrow(CompraEstadoInvalidoError);
+    await expect(registrarDevolucionCompra(ferreteria.id, detalle.id, 1, undefined, dueno.id)).rejects.toThrow(EstadoInvalidoError);
   });
 });

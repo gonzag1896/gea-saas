@@ -1,10 +1,7 @@
 import { prisma } from "@/lib/db";
 import { aplicarMovimientoStock } from "@/lib/stock";
 import { auditar } from "@/lib/auditoria";
-
-export class CompraNoEncontradaError extends Error {}
-export class CompraEstadoInvalidoError extends Error {}
-export class CantidadInvalidaError extends Error {}
+import { EntidadNoEncontradaError, EstadoInvalidoError, CantidadInvalidaError } from "@/lib/errores-dominio";
 
 // AltaMovimientoCompra del sistema original: entrada de stock por línea +
 // actualización de costo y fecha de última compra del producto, todo en
@@ -21,8 +18,8 @@ export async function confirmarCompra(ferreteriaId: string, compraId: string, us
     if (count === 0) {
       const existe = await tx.compra.findUnique({ where: { id_ferreteriaId: { id: compraId, ferreteriaId } } });
       throw existe
-        ? new CompraEstadoInvalidoError("La compra ya fue confirmada o anulada.")
-        : new CompraNoEncontradaError("Compra no encontrada.");
+        ? new EstadoInvalidoError("La compra ya fue confirmada o anulada.")
+        : new EntidadNoEncontradaError("Compra no encontrada.");
     }
 
     const compra = await tx.compra.findUniqueOrThrow({
@@ -70,8 +67,8 @@ export async function anularCompra(ferreteriaId: string, compraId: string, usuar
       if (anulaPendiente.count === 0) {
         const existe = await tx.compra.findUnique({ where: { id_ferreteriaId: { id: compraId, ferreteriaId } } });
         throw existe
-          ? new CompraEstadoInvalidoError("La compra ya estaba anulada.")
-          : new CompraNoEncontradaError("Compra no encontrada.");
+          ? new EstadoInvalidoError("La compra ya estaba anulada.")
+          : new EntidadNoEncontradaError("Compra no encontrada.");
       }
     }
 
@@ -122,9 +119,9 @@ export async function registrarDevolucionCompra(
       where: { id_ferreteriaId: { id: compraDetalleId, ferreteriaId } },
       include: { compra: true, devoluciones: true },
     });
-    if (!linea) throw new CompraNoEncontradaError("Línea de compra no encontrada.");
+    if (!linea) throw new EntidadNoEncontradaError("Línea de compra no encontrada.");
     if (linea.compra.estado !== "CONFIRMADO") {
-      throw new CompraEstadoInvalidoError("Solo se puede devolver mercadería de una compra confirmada.");
+      throw new EstadoInvalidoError("Solo se puede devolver mercadería de una compra confirmada.");
     }
 
     const yaDevuelto = linea.devoluciones.reduce((acc, d) => acc + d.cantidad, 0);
