@@ -57,6 +57,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           )}
           {tienePermiso(session.user.rol, "clientes", "ver") && <a href="/clientes">Clientes</a>}
           {tienePermiso(session.user.rol, "proveedores", "ver") && <a href="/proveedores">Proveedores</a>}
+          {tienePermiso(session.user.rol, "compras", "ver") && <a href="/compras">Compras</a>}
         </nav>
       )}
       <div style={{ padding: 24 }}>{children}</div>
