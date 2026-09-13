@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { sesionSigueValida } from "@/lib/validar-sesion";
+import { tienePermiso } from "@/lib/permisos";
 import { LogoutButton } from "./logout-button";
 import { FerreteriaSwitcher } from "./ferreteria-switcher";
 
@@ -39,6 +40,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </span>
         )}
         <div style={{ display: "flex", gap: 12 }}>
+          {session.user.rol && tienePermiso(session.user.rol, "auditoria", "ver") && <a href="/auditoria">Auditoría</a>}
           <FerreteriaSwitcher isSuperAdmin={session.user.isSuperAdmin} soporte={session.user.soporte} />
           <LogoutButton />
         </div>

@@ -12,9 +12,14 @@ import { GET, POST } from "./route";
 
 const mockAuth = auth as unknown as ReturnType<typeof vi.fn>;
 
-function sesionDe(usuarioId: string, ferreteriaId: string, rol: "DUENO" | "CAJERO" | "DEPOSITO") {
+function sesionDe(
+  usuarioId: string,
+  ferreteriaId: string,
+  rol: "DUENO" | "CAJERO" | "DEPOSITO",
+  opciones: { soporte?: boolean } = {},
+) {
   mockAuth.mockResolvedValue({
-    user: { id: usuarioId, ferreteriaId, ferreteriaNombre: "", rol, isSuperAdmin: false, soporte: false, emitidoEn: Date.now() },
+    user: { id: usuarioId, ferreteriaId, ferreteriaNombre: "", rol, isSuperAdmin: !!opciones.soporte, soporte: !!opciones.soporte, emitidoEn: Date.now() },
   });
 }
 
@@ -67,5 +72,54 @@ describe("aislamiento entre tenants — /api/categorias", () => {
 
     const resGet = await GET();
     expect(resGet.status).toBe(401);
+  });
+});
+
+describe("permisos por rol — /api/categorias", () => {
+  const sufijo = `test-permisos-${Date.now()}`;
+  let ferreteria: { id: string };
+  let cajero: { id: string };
+  let deposito: { id: string };
+  let superAdmin: { id: string };
+
+  beforeAll(async () => {
+    ferreteria = await prisma.ferreteria.create({ data: { nombre: `Permisos ${sufijo}` } });
+    cajero = await prisma.usuario.create({ data: { email: `cajero-${sufijo}@test.gea`, estado: "ACTIVO" } });
+    deposito = await prisma.usuario.create({ data: { email: `deposito-${sufijo}@test.gea`, estado: "ACTIVO" } });
+    superAdmin = await prisma.usuario.create({ data: { email: `super-${sufijo}@test.gea`, estado: "ACTIVO", isSuperAdmin: true } });
+    await prisma.ferreteriaUsuario.create({ data: { ferreteriaId: ferreteria.id, usuarioId: cajero.id, rol: "CAJERO" } });
+    await prisma.ferreteriaUsuario.create({ data: { ferreteriaId: ferreteria.id, usuarioId: deposito.id, rol: "DEPOSITO" } });
+  });
+
+  afterAll(async () => {
+    await prisma.ferreteria.delete({ where: { id: ferreteria.id } });
+    await prisma.usuario.deleteMany({ where: { id: { in: [cajero.id, deposito.id, superAdmin.id] } } });
+  });
+
+  it("Cajero puede ver el catálogo pero no crear categorías (matriz: productos → Cajero solo 'ver')", async () => {
+    sesionDe(cajero.id, ferreteria.id, "CAJERO");
+
+    const resGet = await GET();
+    expect(resGet.status).toBe(200);
+
+    const resPost = await POST(new Request("http://test/api/categorias", { method: "POST", body: JSON.stringify({ nombre: "No debería crearse" }) }));
+    expect(resPost.status).toBe(403);
+  });
+
+  it("Depósito sí puede crear categorías (matriz: productos → Depósito 'ver, crear, modificar')", async () => {
+    sesionDe(deposito.id, ferreteria.id, "DEPOSITO");
+
+    const resPost = await POST(new Request("http://test/api/categorias", { method: "POST", body: JSON.stringify({ nombre: "Clavos" }) }));
+    expect(resPost.status).toBe(201);
+  });
+
+  it("Super Admin en modo soporte puede leer pero no escribir, aunque el rol prestado sea Dueño", async () => {
+    sesionDe(superAdmin.id, ferreteria.id, "DUENO", { soporte: true });
+
+    const resGet = await GET();
+    expect(resGet.status).toBe(200);
+
+    const resPost = await POST(new Request("http://test/api/categorias", { method: "POST", body: JSON.stringify({ nombre: "No debería crearse" }) }));
+    expect(resPost.status).toBe(403);
   });
 });
