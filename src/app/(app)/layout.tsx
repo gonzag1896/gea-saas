@@ -45,6 +45,20 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <LogoutButton />
         </div>
       </header>
+      {session.user.rol && (
+        <nav style={{ display: "flex", gap: 16, padding: "8px 16px", borderBottom: "1px solid #eee" }}>
+          {tienePermiso(session.user.rol, "productos", "ver") && (
+            <>
+              <a href="/categorias">Categorías</a>
+              <a href="/sub-categorias">Sub Categorías</a>
+              <a href="/marcas">Marcas</a>
+              <a href="/productos">Productos</a>
+            </>
+          )}
+          {tienePermiso(session.user.rol, "clientes", "ver") && <a href="/clientes">Clientes</a>}
+          {tienePermiso(session.user.rol, "proveedores", "ver") && <a href="/proveedores">Proveedores</a>}
+        </nav>
+      )}
       <div style={{ padding: 24 }}>{children}</div>
     </div>
   );

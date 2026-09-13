@@ -21,7 +21,8 @@ export type AccionAuditoria =
   | "PASSWORD_RESET_SOLICITADO"
   | "PASSWORD_RESET_COMPLETADO"
   | "IMPERSONACION_INICIO"
-  | "IMPERSONACION_FIN";
+  | "IMPERSONACION_FIN"
+  | "PRODUCTO_PRECIO_CAMBIO";
 
 export async function auditar(params: {
   accion: AccionAuditoria;

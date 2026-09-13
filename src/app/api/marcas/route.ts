@@ -1,21 +1,18 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requirePermiso } from "@/lib/tenant";
-import { crearCategoriaSchema } from "@/lib/schemas-catalogo";
+import { crearMarcaSchema } from "@/lib/schemas-catalogo";
 import { manejarErrorPrisma } from "@/lib/prisma-errors";
 
-// Categorías cae bajo el módulo "productos" de la matriz de permisos: Ver
-// para todos, Crear reservado a Dueño y Depósito (Cajero solo consulta el
-// catálogo, no lo edita).
 export async function GET() {
   const resultado = await requirePermiso("productos", "ver");
   if (!resultado.ok) return NextResponse.json({ error: "No autorizado." }, { status: resultado.status });
 
-  const categorias = await prisma.categoria.findMany({
+  const marcas = await prisma.marca.findMany({
     where: { ferreteriaId: resultado.contexto.ferreteriaId },
     orderBy: { nombre: "asc" },
   });
-  return NextResponse.json({ categorias });
+  return NextResponse.json({ marcas });
 }
 
 export async function POST(req: Request) {
@@ -23,15 +20,15 @@ export async function POST(req: Request) {
   if (!resultado.ok) return NextResponse.json({ error: "No autorizado." }, { status: resultado.status });
 
   const body = await req.json().catch(() => null);
-  const parsed = crearCategoriaSchema.safeParse(body);
+  const parsed = crearMarcaSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Datos inválidos." }, { status: 400 });
 
   try {
-    const categoria = await prisma.categoria.create({
+    const marca = await prisma.marca.create({
       data: { ferreteriaId: resultado.contexto.ferreteriaId, nombre: parsed.data.nombre },
     });
-    return NextResponse.json({ categoria }, { status: 201 });
+    return NextResponse.json({ marca }, { status: 201 });
   } catch (error) {
-    return manejarErrorPrisma(error, "Ya existe una categoría con ese nombre.");
+    return manejarErrorPrisma(error, "Ya existe una marca con ese nombre.");
   }
 }
