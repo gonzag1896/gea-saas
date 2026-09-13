@@ -1,0 +1,642 @@
+generator client {
+  provider      = "prisma-client-js"
+  // Netlify compila en Ubuntu pero ejecuta las funciones en Lambda (Amazon
+  // Linux). Sin el segundo target, el cliente se genera para el sistema
+  // equivocado y en producción falla con "query engine not found".
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ============================================================
+// Convención de multi-tenancy (Revisión técnica final, sección 1):
+// toda tabla que cuelga de una Ferretería lleva su propio `ferreteriaId`
+// (no solo el de su padre) para que cualquier consulta pueda filtrar sin
+// necesidad de un join. Para que ese `ferreteriaId` denormalizado no pueda
+// divergir del padre real, cada tabla tenant-scoped declara
+// `@@unique([id, ferreteriaId])` y sus tablas hijas referencian al padre
+// con una FK COMPUESTA `(padreId, ferreteriaId)`. Postgres rechaza el
+// insert si no coinciden — es la base de datos, no la aplicación, la que
+// garantiza que una fila nunca quede "cruzada" entre dos ferreterías.
+// ============================================================
+
+// ============================================================
+// Autenticación (Auth.js / NextAuth v5). Fase 1 instala y tipa esto; el
+// Credentials provider real (bcrypt, rate limiting, bloqueo por intentos)
+// se implementa recién en Fase 3.
+// ============================================================
+
+enum EstadoUsuario {
+  INVITADO // creado, sin password todavía, pendiente de aceptar invitación
+  ACTIVO
+  BLOQUEADO
+  INACTIVO // desactivado, nunca se borra (referencias de auditoría)
+}
+
+model Usuario {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  passwordHash  String?
+
+  // Nunca se mezcla con roles de ferretería (ver FerreteriaUsuario).
+  isSuperAdmin Boolean       @default(false)
+  estado       EstadoUsuario @default(INVITADO)
+
+  // Freno de fuerza bruta persistido en base: en Netlify cada request puede
+  // caer en una instancia distinta, un contador en memoria no frena nada.
+  intentosFallidos Int       @default(0)
+  bloqueadoHasta   DateTime?
+
+  // Los tokens de sesión (JWT) se emiten y viven por su cuenta. Comparar
+  // su fecha de emisión contra esta columna es lo único que permite cortar
+  // una sesión antes de que expire sola cuando se cambia/resetea la clave.
+  passwordCambiadoAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accounts Account[]
+  sessions Session[]
+
+  ferreterias FerreteriaUsuario[]
+  auditLogs   AuditLog[]
+
+  ventasRegistradas  Venta[]            @relation("VentaRegistradaPor")
+  ventasAnuladas     Venta[]            @relation("VentaAnuladaPor")
+  comprasRegistradas Compra[]           @relation("CompraRegistradaPor")
+  comprasAnuladas    Compra[]           @relation("CompraAnuladaPor")
+  movimientosStock   MovimientoStock[]  @relation("MovimientoStockRegistradoPor")
+  movimientosCC      CuentaCliente[]    @relation("CuentaClienteRegistradoPor")
+  devolucionesCompra DevolucionCompra[] @relation("DevolucionCompraRegistradoPor")
+  devolucionesVenta  DevolucionVenta[]  @relation("DevolucionVentaRegistradoPor")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  usuario Usuario @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  usuario Usuario @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Usado para recuperación de contraseña (Fase 3, vía Resend): el token que
+// se manda por email es el valor en claro, pero lo que se guarda acá está
+// hasheado — un volcado de esta tabla nunca da un link de reset utilizable.
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ============================================================
+// Multi-tenant: cada Ferretería es un tenant.
+// ============================================================
+
+enum EstadoFerreteria {
+  ACTIVO
+  INACTIVO
+}
+
+model Ferreteria {
+  id     String           @id @default(cuid())
+  nombre String
+  estado EstadoFerreteria @default(ACTIVO)
+
+  // Identificador corto para URLs públicas futuras, en vez del id interno.
+  slug String? @unique
+
+  // Datos fiscales — no usados todavía (sin integración e-Factura), campo
+  // reservado ahora porque agregarlo después es gratis y agregarlo más
+  // tarde sobre datos ya cargados no lo es (decisión pendiente #5, cerrada).
+  rut         String?
+  razonSocial String?
+
+  telefono  String?
+  direccion String?
+  logoUrl   String?
+  colorPrimario String?
+
+  // Habilita/deshabilita módulos futuros por ferretería sin migraciones.
+  moduleFlags Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  usuarios    FerreteriaUsuario[]
+  categorias  Categoria[]
+  marcas      Marca[]
+  clientes    Cliente[]
+  proveedores Proveedor[]
+  productos   Producto[]
+  compras     Compra[]
+  ventas      Venta[]
+  auditLogs   AuditLog[]
+
+  @@index([estado])
+}
+
+enum RolFerreteria {
+  DUENO
+  CAJERO
+  DEPOSITO
+}
+
+enum EstadoMembresia {
+  ACTIVO
+  INACTIVO
+}
+
+// Tabla puente: una persona puede trabajar en más de una ferretería, con un
+// rol distinto en cada una. El rol vive en la relación, no en Usuario.
+model FerreteriaUsuario {
+  id           String          @id @default(cuid())
+  ferreteriaId String
+  usuarioId    String
+  rol          RolFerreteria
+  estado       EstadoMembresia @default(ACTIVO)
+
+  createdAt DateTime @default(now())
+
+  ferreteria Ferreteria @relation(fields: [ferreteriaId], references: [id], onDelete: Cascade)
+  usuario    Usuario    @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  @@unique([ferreteriaId, usuarioId])
+  @@index([usuarioId])
+}
+
+// ============================================================
+// Catálogo
+// ============================================================
+
+model Categoria {
+  id           String  @id @default(cuid())
+  ferreteriaId String
+  nombre       String
+  activo       Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ferreteria    Ferreteria     @relation(fields: [ferreteriaId], references: [id], onDelete: Cascade)
+  subCategorias SubCategoria[]
+
+  @@unique([id, ferreteriaId])
+  @@unique([ferreteriaId, nombre])
+}
+
+model SubCategoria {
+  id           String  @id @default(cuid())
+  ferreteriaId String
+  categoriaId  String
+  nombre       String
+  activo       Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  categoria Categoria  @relation(fields: [categoriaId, ferreteriaId], references: [id, ferreteriaId], onDelete: Cascade)
+  productos Producto[]
+
+  @@unique([id, ferreteriaId])
+  @@unique([categoriaId, nombre])
+  @@index([ferreteriaId])
+}
+
+model Marca {
+  id           String  @id @default(cuid())
+  ferreteriaId String
+  nombre       String
+  activo       Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ferreteria Ferreteria @relation(fields: [ferreteriaId], references: [id], onDelete: Cascade)
+  productos  Producto[]
+
+  @@unique([id, ferreteriaId])
+  @@unique([ferreteriaId, nombre])
+}
+
+enum Moneda {
+  UYU
+  USD
+}
+
+model Producto {
+  id           String @id @default(cuid())
+  ferreteriaId String
+
+  codigo         String
+  descripcion    String
+  subCategoriaId String
+  marcaId        String
+
+  moneda      Moneda  @default(UYU)
+  precioCosto Decimal @default(0) @db.Decimal(12, 2)
+  precioVenta Decimal @default(0) @db.Decimal(12, 2)
+
+  // stockActual es una proyección de MovimientoStock (única fuente de
+  // verdad, ver esa tabla), mantenida en la misma transacción que cada
+  // movimiento. `CHECK (stockActual >= 0)` se agrega en la migración
+  // manual (decisión pendiente #1, cerrada: se bloquea stock negativo).
+  stockActual Int @default(0)
+  stockMinimo Int @default(0)
+
+  fechaUltCompra              DateTime? @db.Date
+  fechaUltActualizacionPrecio DateTime? @db.Date
+  observaciones               String?
+  activo                      Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ferreteria   Ferreteria   @relation(fields: [ferreteriaId], references: [id], onDelete: Cascade)
+  subCategoria SubCategoria @relation(fields: [subCategoriaId, ferreteriaId], references: [id, ferreteriaId])
+  marca        Marca        @relation(fields: [marcaId, ferreteriaId], references: [id, ferreteriaId])
+
+  compraDetalles   CompraDetalle[]
+  ventaDetalles    VentaDetalle[]
+  movimientosStock MovimientoStock[]
+
+  @@unique([id, ferreteriaId])
+  @@unique([ferreteriaId, codigo])
+  @@index([ferreteriaId, subCategoriaId])
+  @@index([ferreteriaId, marcaId])
+}
+
+// ============================================================
+// Terceros
+// ============================================================
+
+model Cliente {
+  id           String  @id @default(cuid())
+  ferreteriaId String
+  nombre       String
+  telefono     String?
+  activo       Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ferreteria    Ferreteria      @relation(fields: [ferreteriaId], references: [id], onDelete: Cascade)
+  ventas        Venta[]
+  cuentaCliente CuentaCliente[]
+
+  @@unique([id, ferreteriaId])
+  @@index([ferreteriaId])
+}
+
+model Proveedor {
+  id           String  @id @default(cuid())
+  ferreteriaId String
+  nombre       String
+  // UNIQUE parcial (ferreteriaId, rut) WHERE rut IS NOT NULL — Prisma no
+  // soporta índices únicos parciales en el DSL, se agrega en la migración
+  // manual junto con los CHECK constraints.
+  rut          String?
+  telefono     String?
+  email        String?
+  activo       Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ferreteria Ferreteria @relation(fields: [ferreteriaId], references: [id], onDelete: Cascade)
+  compras    Compra[]
+
+  @@unique([id, ferreteriaId])
+  @@index([ferreteriaId])
+}
+
+// ============================================================
+// Compras
+// ============================================================
+
+enum EstadoOperacion {
+  PENDIENTE
+  CONFIRMADO
+  ANULADO
+}
+
+enum TipoIva {
+  EXENTO // 0%
+  TOTAL // 22%
+}
+
+model Compra {
+  id           String @id @default(cuid())
+  ferreteriaId String
+  proveedorId  String
+
+  fecha         DateTime        @db.Date
+  // UNIQUE parcial (ferreteriaId, proveedorId, numeroFactura) WHERE
+  // numeroFactura IS NOT NULL — migración manual, mismo motivo que Proveedor.rut.
+  numeroFactura String?
+  facturaPdfUrl String?
+  estado        EstadoOperacion @default(PENDIENTE)
+  observaciones String?
+
+  subtotal Decimal @default(0) @db.Decimal(12, 2)
+  iva      Decimal @default(0) @db.Decimal(12, 2)
+  total    Decimal @default(0) @db.Decimal(12, 2)
+
+  registradoPorUsuarioId String?
+  anuladoPorUsuarioId    String?
+  anuladoAt              DateTime?
+  motivoAnulacion        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ferreteria    Ferreteria @relation(fields: [ferreteriaId], references: [id], onDelete: Cascade)
+  proveedor     Proveedor  @relation(fields: [proveedorId, ferreteriaId], references: [id, ferreteriaId])
+  registradoPor Usuario?   @relation("CompraRegistradaPor", fields: [registradoPorUsuarioId], references: [id])
+  anuladoPor    Usuario?   @relation("CompraAnuladaPor", fields: [anuladoPorUsuarioId], references: [id])
+
+  detalle CompraDetalle[]
+
+  @@unique([id, ferreteriaId])
+  @@index([ferreteriaId, fecha])
+  @@index([ferreteriaId, estado])
+}
+
+model CompraDetalle {
+  id           String @id @default(cuid())
+  ferreteriaId String
+  compraId     String
+  productoId   String
+
+  // CHECK (cantidad > 0) — migración manual.
+  cantidad      Int
+  costoUnitario Decimal @db.Decimal(12, 2)
+  tipoIva       TipoIva @default(EXENTO)
+  subtotal      Decimal @db.Decimal(12, 2)
+
+  compra       Compra             @relation(fields: [compraId, ferreteriaId], references: [id, ferreteriaId], onDelete: Cascade)
+  producto     Producto           @relation(fields: [productoId, ferreteriaId], references: [id, ferreteriaId])
+  devoluciones DevolucionCompra[]
+
+  @@unique([id, ferreteriaId])
+  @@index([compraId])
+  @@index([ferreteriaId, productoId])
+}
+
+model DevolucionCompra {
+  id              String @id @default(cuid())
+  ferreteriaId    String
+  compraDetalleId String
+
+  // CHECK (cantidad > 0) — migración manual.
+  cantidad Int
+  motivo   String?
+
+  registradoPorUsuarioId String?
+  createdAt              DateTime @default(now())
+
+  compraDetalle CompraDetalle @relation(fields: [compraDetalleId, ferreteriaId], references: [id, ferreteriaId])
+  registradoPor Usuario?      @relation("DevolucionCompraRegistradoPor", fields: [registradoPorUsuarioId], references: [id])
+
+  @@index([compraDetalleId])
+}
+
+// ============================================================
+// Ventas
+// ============================================================
+
+enum MedioPago {
+  CONTADO
+  CREDITO
+  TRANSFERENCIA
+}
+
+model Venta {
+  id           String @id @default(cuid())
+  ferreteriaId String
+  clienteId    String
+
+  fecha     DateTime        @db.Date
+  estado    EstadoOperacion @default(PENDIENTE)
+  tipoIva   TipoIva         @default(EXENTO)
+  medioPago MedioPago       @default(CONTADO)
+
+  subtotal Decimal @default(0) @db.Decimal(12, 2)
+  iva      Decimal @default(0) @db.Decimal(12, 2)
+  entrega  Decimal @default(0) @db.Decimal(12, 2)
+  total    Decimal @default(0) @db.Decimal(12, 2)
+
+  registradoPorUsuarioId String?
+  anuladoPorUsuarioId    String?
+  anuladoAt              DateTime?
+  motivoAnulacion        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ferreteria    Ferreteria @relation(fields: [ferreteriaId], references: [id], onDelete: Cascade)
+  cliente       Cliente    @relation(fields: [clienteId, ferreteriaId], references: [id, ferreteriaId])
+  registradoPor Usuario?   @relation("VentaRegistradaPor", fields: [registradoPorUsuarioId], references: [id])
+  anuladoPor    Usuario?   @relation("VentaAnuladaPor", fields: [anuladoPorUsuarioId], references: [id])
+
+  detalle VentaDetalle[]
+
+  @@unique([id, ferreteriaId])
+  @@index([ferreteriaId, fecha])
+  @@index([ferreteriaId, estado])
+}
+
+model VentaDetalle {
+  id           String @id @default(cuid())
+  ferreteriaId String
+  ventaId      String
+  productoId   String
+
+  precio    Decimal @db.Decimal(12, 2)
+  descuento Decimal @default(0) @db.Decimal(12, 2)
+  // CHECK (cantidad > 0), CHECK (cantidadDevuelta <= cantidad) — migración manual.
+  cantidad         Int
+  cantidadDevuelta Int     @default(0)
+  total            Decimal @db.Decimal(12, 2)
+  totalVigente     Decimal @db.Decimal(12, 2)
+
+  venta        Venta             @relation(fields: [ventaId, ferreteriaId], references: [id, ferreteriaId], onDelete: Cascade)
+  producto     Producto          @relation(fields: [productoId, ferreteriaId], references: [id, ferreteriaId])
+  devoluciones DevolucionVenta[]
+
+  @@unique([id, ferreteriaId])
+  @@index([ventaId])
+  @@index([ferreteriaId, productoId])
+}
+
+model DevolucionVenta {
+  id             String @id @default(cuid())
+  ferreteriaId   String
+  ventaDetalleId String
+
+  // CHECK (cantidad > 0) — migración manual.
+  cantidad Int
+  motivo   String?
+
+  registradoPorUsuarioId String?
+  createdAt              DateTime @default(now())
+
+  ventaDetalle  VentaDetalle @relation(fields: [ventaDetalleId, ferreteriaId], references: [id, ferreteriaId])
+  registradoPor Usuario?     @relation("DevolucionVentaRegistradoPor", fields: [registradoPorUsuarioId], references: [id])
+
+  @@index([ventaDetalleId])
+}
+
+// ============================================================
+// Stock — MovimientoStock es la única fuente de verdad; Producto.stockActual
+// es una proyección mantenida en la misma transacción que cada movimiento.
+// ============================================================
+
+enum TipoMovimientoStock {
+  ENTRADA
+  SALIDA
+  AJUSTE_POSITIVO
+  AJUSTE_NEGATIVO
+}
+
+enum OrigenMovimientoStock {
+  COMPRA
+  VENTA
+  AJUSTE
+  DEVOLUCION_COMPRA
+  DEVOLUCION_VENTA
+}
+
+model MovimientoStock {
+  id           String @id @default(cuid())
+  ferreteriaId String
+  productoId   String
+
+  fecha    DateTime            @db.Date
+  tipo     TipoMovimientoStock
+  cantidad Int
+  motivo   String?
+
+  // Referencia polimórfica (Compra/Venta/Ajuste/Devolución) sin FK de base
+  // — validada en la capa de dominio, no en el esquema.
+  origenTipo OrigenMovimientoStock
+  origenId   String?
+
+  registradoPorUsuarioId String?
+  createdAt              DateTime @default(now())
+
+  producto      Producto @relation(fields: [productoId, ferreteriaId], references: [id, ferreteriaId])
+  registradoPor Usuario? @relation("MovimientoStockRegistradoPor", fields: [registradoPorUsuarioId], references: [id])
+
+  @@unique([id, ferreteriaId])
+  @@index([ferreteriaId, productoId, fecha])
+  @@index([origenTipo, origenId])
+}
+
+// ============================================================
+// Cuenta corriente de clientes — libro mayor a partida doble, append-only
+// (ninguna operación de negocio hace UPDATE/DELETE acá; una reversión es
+// una fila nueva de signo contrario).
+// ============================================================
+
+enum OrigenCuentaCliente {
+  VENTA_CREDITO
+  COBRO
+  DEVOLUCION_VENTA
+  ANULACION_VENTA_CREDITO
+}
+
+model CuentaCliente {
+  id           String @id @default(cuid())
+  ferreteriaId String
+  clienteId    String
+
+  fecha DateTime @db.Date
+  // CHECK (debe >= 0 AND haber >= 0), CHECK (debe = 0 OR haber = 0) —
+  // migración manual: una fila es débito o crédito, nunca ambos ni negativa.
+  debe  Decimal  @default(0) @db.Decimal(12, 2)
+  haber Decimal  @default(0) @db.Decimal(12, 2)
+
+  origenTipo OrigenCuentaCliente
+  origenId   String?
+  referencia String?
+
+  registradoPorUsuarioId String?
+  createdAt              DateTime @default(now())
+
+  cliente       Cliente  @relation(fields: [clienteId, ferreteriaId], references: [id, ferreteriaId])
+  registradoPor Usuario? @relation("CuentaClienteRegistradoPor", fields: [registradoPorUsuarioId], references: [id])
+
+  @@unique([id, ferreteriaId])
+  @@index([ferreteriaId, clienteId, fecha])
+}
+
+// ============================================================
+// Auditoría y rate limiting
+// ============================================================
+
+model AuditLog {
+  id           String  @id @default(cuid())
+  usuarioId    String?
+  ferreteriaId String?
+
+  accion    String
+  entidad   String?
+  entidadId String?
+  // `detalle` nunca lleva password/passwordHash/token — el helper auditar()
+  // los descarta antes de serializar, como red además de la disciplina de
+  // cada caso de uso.
+  detalle   Json?
+
+  ip        String?
+  userAgent String?
+
+  createdAt DateTime @default(now())
+
+  usuario    Usuario?    @relation(fields: [usuarioId], references: [id])
+  ferreteria Ferreteria? @relation(fields: [ferreteriaId], references: [id])
+
+  @@index([ferreteriaId, createdAt])
+  @@index([usuarioId])
+}
+
+// Freno de abuso por IP/clave en rutas sin sesión (login, reset de
+// contraseña). Ventana fija: una fila por (clave, ventana) que se
+// incrementa; no hace falta job de limpieza, el volumen es chico y las
+// filas viejas no se vuelven a leer.
+model RateLimit {
+  id       String   @id @default(cuid())
+  clave    String
+  ventana  DateTime
+  cantidad Int      @default(1)
+
+  @@unique([clave, ventana])
+}

@@ -1,0 +1,32 @@
+# Postgres local para desarrollo. Desarrollar contra la nube (Supabase) es
+# inusable por la latencia del viaje ida y vuelta en cada consulta; esto
+# deja la base a 1-2 ms.
+#
+# Puerto 5435: en esta máquina ya hay otros Postgres locales ocupando
+# 5432/5433/5434 — con el mismo puerto, las conexiones caen en el
+# contenedor equivocado.
+#
+# Levantar:  npm run db:local
+# Apagar:    npm run db:local:stop
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: gea-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: gea
+    ports:
+      - "5435:5432"
+    volumes:
+      - gea-datos:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d gea"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  gea-datos:
