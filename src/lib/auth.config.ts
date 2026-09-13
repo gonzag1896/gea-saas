@@ -1,4 +1,4 @@
-import type { NextAuthConfig } from "next-auth";
+import type { NextAuthConfig, Session } from "next-auth";
 
 // Parte de la configuración de Auth.js que puede correr en el Edge Runtime:
 // sin Prisma y sin bcrypt. La usará el middleware (Fase 4), que en Netlify
@@ -6,8 +6,9 @@ import type { NextAuthConfig } from "next-auth";
 // librerías necesitan.
 //
 // El Credentials provider real (bcrypt, rate limiting, bloqueo por
-// intentos) y los callbacks que arman gymId/rol/isSuperAdmin en el token
-// son Fase 3 — acá solo queda la forma, no la lógica de negocio.
+// intentos) vive en auth.ts, que corre en Node. El callback `session` sí
+// puede ir acá porque solo copia campos del token a la sesión, sin tocar
+// la base — el middleware (Fase 4) lo necesita disponible en el edge.
 export const authConfig = {
   session: { strategy: "jwt", maxAge: 7 * 24 * 60 * 60 },
 
@@ -19,8 +20,22 @@ export const authConfig = {
     signIn: "/login",
   },
 
-  // Se agregan en auth.ts (Fase 3): definirlos acá arrastraría bcrypt al edge.
+  // El Credentials provider se agrega en auth.ts: definirlo acá arrastraría
+  // bcrypt al edge.
   providers: [],
 
-  callbacks: {},
+  callbacks: {
+    session({ session, token }) {
+      if (session.user && token.id) {
+        session.user.id = token.id as string;
+        session.user.isSuperAdmin = (token.isSuperAdmin as boolean | undefined) ?? false;
+        session.user.ferreteriaId = (token.ferreteriaId as string | null | undefined) ?? null;
+        session.user.ferreteriaNombre = (token.ferreteriaNombre as string | null | undefined) ?? null;
+        session.user.rol = (token.rol as Session["user"]["rol"]) ?? null;
+        session.user.soporte = (token.soporte as boolean | undefined) ?? false;
+        session.user.emitidoEn = (token.emitidoEn as number | undefined) ?? 0;
+      }
+      return session;
+    },
+  },
 } satisfies NextAuthConfig;
