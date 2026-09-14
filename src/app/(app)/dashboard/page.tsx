@@ -1,122 +1,61 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
-import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-} from "recharts";
+import { redirect } from "next/navigation";
+import { obtenerContextoTenant } from "@/lib/tenant";
+import { tienePermiso } from "@/lib/permisos";
+import { totalVentasDelMes, totalComprasDelMes, ventasDiarias, comprasPorProveedor } from "@/lib/dashboard";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
-import { Button } from "@/components/ui/Button";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { PageLoading } from "@/components/ui/PageLoading";
-
-type DashboardData = {
-  ventasDelMes: number | null;
-  comprasDelMes: number | null;
-  ventasDiarias: { fecha: string; total: number }[] | null;
-  comprasPorProveedor: { proveedor: string; total: number }[] | null;
-  desde: string;
-  hasta: string;
-};
+import { DashboardCharts } from "./DashboardCharts";
 
 function formatoMoneda(n: number) {
   return n.toLocaleString("es-UY", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
-export default function DashboardPage() {
-  const { data: session } = useSession();
-  const [datos, setDatos] = useState<DashboardData | null>(null);
-  const [desde, setDesde] = useState("");
-  const [hasta, setHasta] = useState("");
+// Igual que el módulo de negocio que ya usa cada rol (sección 6 de la
+// matriz): Depósito no ve ventas, Cajero no ve compras — no es un permiso
+// propio de "dashboard", es un resumen de lo que cada uno ya puede ver.
+export default async function DashboardPage({ searchParams }: { searchParams: { desde?: string; hasta?: string } }) {
+  const contexto = await obtenerContextoTenant();
+  if (!contexto) redirect("/login");
 
-  async function cargar(desdeParam?: string, hastaParam?: string) {
-    const params = new URLSearchParams();
-    if (desdeParam) params.set("desde", desdeParam);
-    if (hastaParam) params.set("hasta", hastaParam);
-    const res = await fetch(`/api/dashboard?${params}`);
-    if (res.ok) {
-      const data: DashboardData = await res.json();
-      setDatos(data);
-      setDesde(data.desde);
-      setHasta(data.hasta);
-    }
-  }
-  useEffect(() => { cargar(); }, []);
+  const hasta = searchParams.hasta ? new Date(searchParams.hasta) : new Date();
+  const desde = searchParams.desde ? new Date(searchParams.desde) : new Date(hasta.getTime() - 29 * 24 * 60 * 60 * 1000);
 
-  if (!datos) return <main><PageLoading /></main>;
+  const { ferreteriaId, rol } = contexto;
+  const puedeVerVentas = tienePermiso(rol, "ventas", "ver");
+  const puedeVerCompras = tienePermiso(rol, "compras", "ver");
+
+  const [ventasMes, comprasMes, diarias, porProveedor] = await Promise.all([
+    puedeVerVentas ? totalVentasDelMes(ferreteriaId) : Promise.resolve(null),
+    puedeVerCompras ? totalComprasDelMes(ferreteriaId) : Promise.resolve(null),
+    puedeVerVentas ? ventasDiarias(ferreteriaId, desde, hasta) : Promise.resolve(null),
+    puedeVerCompras ? comprasPorProveedor(ferreteriaId, desde, hasta) : Promise.resolve(null),
+  ]);
 
   return (
-    <main className="flex flex-col gap-6">
-      <PageHeader title="Dashboard" description={session?.user.ferreteriaNombre ?? undefined} />
+    <div className="flex flex-col gap-6">
+      <PageHeader title="Dashboard" description={contexto.ferreteriaNombre} />
 
       <div className="flex flex-wrap gap-4">
-        {datos.ventasDelMes !== null && (
+        {ventasMes !== null && (
           <Card className="min-w-[200px]">
             <div className="text-sm text-muted-foreground">Ventas en el mes</div>
-            <div className="text-2xl font-semibold text-foreground">$ {formatoMoneda(datos.ventasDelMes)}</div>
+            <div className="text-2xl font-semibold text-foreground font-mono tabular-nums">$ {formatoMoneda(ventasMes)}</div>
           </Card>
         )}
-        {datos.comprasDelMes !== null && (
+        {comprasMes !== null && (
           <Card className="min-w-[200px]">
             <div className="text-sm text-muted-foreground">Compras en el mes</div>
-            <div className="text-2xl font-semibold text-foreground">$ {formatoMoneda(datos.comprasDelMes)}</div>
+            <div className="text-2xl font-semibold text-foreground font-mono tabular-nums">$ {formatoMoneda(comprasMes)}</div>
           </Card>
         )}
       </div>
 
-      {(datos.ventasDiarias !== null || datos.comprasPorProveedor !== null) && (
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="text-sm text-foreground">
-            <span className="mb-1 block font-medium">Desde</span>
-            <Input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} />
-          </label>
-          <label className="text-sm text-foreground">
-            <span className="mb-1 block font-medium">Hasta</span>
-            <Input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} />
-          </label>
-          <Button variant="secondary" onClick={() => cargar(desde, hasta)}>Aplicar</Button>
-        </div>
-      )}
-
-      {datos.ventasDiarias !== null && (
-        <div>
-          <h3 className="mb-3 text-sm font-semibold text-foreground">Ventas diarias</h3>
-          {datos.ventasDiarias.length === 0 ? (
-            <EmptyState message="No hay ventas confirmadas en este rango de fechas." />
-          ) : (
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={datos.ventasDiarias}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                <XAxis dataKey="fecha" stroke="var(--color-muted-foreground)" fontSize={12} />
-                <YAxis stroke="var(--color-muted-foreground)" fontSize={12} />
-                <Tooltip formatter={(v: number) => `$ ${formatoMoneda(v)}`} />
-                <Line type="monotone" dataKey="total" name="Total" stroke="var(--color-primary)" strokeWidth={2} dot={{ r: 3 }} />
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      )}
-
-      {datos.comprasPorProveedor !== null && (
-        <div>
-          <h3 className="mb-3 text-sm font-semibold text-foreground">Compras por proveedor</h3>
-          {datos.comprasPorProveedor.length === 0 ? (
-            <EmptyState message="No hay compras confirmadas en este rango de fechas." />
-          ) : (
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={datos.comprasPorProveedor}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                <XAxis dataKey="proveedor" stroke="var(--color-muted-foreground)" fontSize={12} />
-                <YAxis stroke="var(--color-muted-foreground)" fontSize={12} />
-                <Tooltip formatter={(v: number) => `$ ${formatoMoneda(v)}`} />
-                <Bar dataKey="total" name="Total" fill="var(--color-primary)" />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      )}
-    </main>
+      <DashboardCharts
+        ventasDiarias={diarias}
+        comprasPorProveedor={porProveedor}
+        desde={desde.toISOString().slice(0, 10)}
+        hasta={hasta.toISOString().slice(0, 10)}
+      />
+    </div>
   );
 }

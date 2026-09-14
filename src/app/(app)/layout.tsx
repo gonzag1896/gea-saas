@@ -1,10 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { sesionSigueValida } from "@/lib/validar-sesion";
-import { tienePermiso } from "@/lib/permisos";
-import { NavLink } from "@/components/ui/NavLink";
-import { LogoutButton } from "./logout-button";
-import { FerreteriaSwitcher } from "./ferreteria-switcher";
+import { Sidebar } from "./sidebar";
 
 // Guardia de todo lo que cuelga de (app): sin sesión, con una sesión vieja
 // (contraseña cambiada o membresía revocada después de emitido el token),
@@ -31,39 +28,16 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-6 py-4">
-        <span className="text-sm text-muted-foreground">{session.user.email}</span>
-        {session.user.ferreteriaId && (
-          <span className="text-sm font-medium text-foreground">
-            {session.user.soporte ? "Modo soporte — " : ""}
-            {session.user.ferreteriaNombre} ({session.user.rol})
-          </span>
-        )}
-        <div className="flex items-center gap-3">
-          {session.user.rol && tienePermiso(session.user.rol, "auditoria", "ver") && <NavLink href="/auditoria">Auditoría</NavLink>}
-          <FerreteriaSwitcher isSuperAdmin={session.user.isSuperAdmin} soporte={session.user.soporte} />
-          <LogoutButton />
-        </div>
-      </header>
-      {session.user.rol && (
-        <nav className="flex flex-wrap gap-1 border-b border-border px-6 py-2">
-          {tienePermiso(session.user.rol, "productos", "ver") && (
-            <>
-              <NavLink href="/categorias">Categorías</NavLink>
-              <NavLink href="/sub-categorias">Sub Categorías</NavLink>
-              <NavLink href="/marcas">Marcas</NavLink>
-              <NavLink href="/productos">Productos</NavLink>
-            </>
-          )}
-          {tienePermiso(session.user.rol, "clientes", "ver") && <NavLink href="/clientes">Clientes</NavLink>}
-          {tienePermiso(session.user.rol, "proveedores", "ver") && <NavLink href="/proveedores">Proveedores</NavLink>}
-          {tienePermiso(session.user.rol, "compras", "ver") && <NavLink href="/compras">Compras</NavLink>}
-          {tienePermiso(session.user.rol, "ventas", "ver") && <NavLink href="/ventas">Ventas</NavLink>}
-          {tienePermiso(session.user.rol, "cuentaCorriente", "ver") && <NavLink href="/cuenta-corriente">Cuenta Corriente</NavLink>}
-        </nav>
-      )}
-      <div className="p-6">{children}</div>
+    <div className="flex min-h-screen bg-background">
+      <Sidebar
+        rol={session.user.rol}
+        email={session.user.email ?? ""}
+        ferreteriaId={session.user.ferreteriaId}
+        ferreteriaNombre={session.user.ferreteriaNombre}
+        soporte={session.user.soporte}
+        isSuperAdmin={session.user.isSuperAdmin}
+      />
+      <main className="min-w-0 flex-1 overflow-x-hidden p-8">{children}</main>
     </div>
   );
 }

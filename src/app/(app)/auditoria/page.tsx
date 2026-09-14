@@ -16,9 +16,9 @@ export default async function AuditoriaPage() {
 
   if (!contexto || !tienePermiso(contexto.rol, "auditoria", "ver")) {
     return (
-      <main>
+      <div>
         <Alert variant="info">No tenés permiso para ver esta página.</Alert>
-      </main>
+      </div>
     );
   }
 
@@ -30,7 +30,7 @@ export default async function AuditoriaPage() {
   });
 
   return (
-    <main className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <PageHeader title="Auditoría" />
       <Table>
         <Table.Head>
@@ -53,6 +53,6 @@ export default async function AuditoriaPage() {
         </tbody>
       </Table>
       {eventos.length === 0 && <EmptyState message="Todavía no hay eventos registrados." />}
-    </main>
+    </div>
   );
 }
