@@ -2,16 +2,38 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Tokens del Design System GEA — valores PLACEHOLDER (grises + un slate
+ * discreto), a propósito neutros: la fase de UI/UX define la paleta de
+ * marca definitiva acá, sin tocar ningún componente ni pantalla, porque
+ * todos consumen estos nombres semánticos y nunca un color hardcodeado.
+ */
+/*
+ * Sin variante oscura a propósito: la mitad de la app (inputs, tablas,
+ * cards) recién ahora pasa a usar estos tokens y solo `--background`/
+ * `--foreground` tenían un valor para modo oscuro — con eso solo, cada
+ * superficie nueva (blanca) quedaba con texto claro pensado para fondo
+ * oscuro encima, ilegible. Mismo tema en un solo modo hasta que la fase
+ * de UI/UX diseñe el modo oscuro real con todos los tokens coordinados.
+ */
 :root {
   --background: #ffffff;
   --foreground: #171717;
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-primary: #334155;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #f1f5f9;
+  --color-secondary-foreground: #171717;
+  --color-surface: #ffffff;
+  --color-border: #e2e8f0;
+  --color-muted: #f8fafc;
+  --color-muted-foreground: #64748b;
+  --color-danger: #b91c1c;
+  --color-danger-foreground: #ffffff;
+  --color-warning: #b45309;
+  --color-warning-foreground: #ffffff;
+  --color-success: #15803d;
+  --color-success-foreground: #ffffff;
 }
 
 body {

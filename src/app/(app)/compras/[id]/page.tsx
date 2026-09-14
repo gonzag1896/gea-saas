@@ -4,6 +4,13 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { tienePermiso } from "@/lib/permisos";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Button } from "@/components/ui/Button";
+import { Alert } from "@/components/ui/Alert";
+import { Table } from "@/components/ui/Table";
+import { PageLoading } from "@/components/ui/PageLoading";
+import { PromptDialog } from "@/components/ui/PromptDialog";
+import { DevolucionDialog } from "@/components/dialogs/DevolucionDialog";
 
 type Linea = {
   id: string;
@@ -35,6 +42,8 @@ export default function CompraDetallePage() {
   const [compra, setCompra] = useState<Compra | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const [anulando, setAnulando] = useState(false);
+  const [lineaADevolver, setLineaADevolver] = useState<string | null>(null);
 
   async function cargar() {
     const res = await fetch(`/api/compras/${id}`);
@@ -52,9 +61,7 @@ export default function CompraDetallePage() {
     cargar();
   }
 
-  async function anular() {
-    const motivo = prompt("Motivo de la anulación:");
-    if (!motivo) return;
+  async function anular(motivo: string) {
     setError(null);
     setEnviando(true);
     const res = await fetch(`/api/compras/${id}/anular`, {
@@ -63,63 +70,92 @@ export default function CompraDetallePage() {
       body: JSON.stringify({ motivo }),
     });
     setEnviando(false);
+    setAnulando(false);
     if (!res.ok) return setError((await res.json()).error);
     cargar();
   }
 
-  async function devolver(lineaId: string) {
-    const cantidadStr = prompt("Cantidad a devolver:");
-    if (!cantidadStr) return;
-    const motivo = prompt("Motivo (opcional):") ?? undefined;
+  async function devolver(cantidad: number, motivo: string | undefined) {
+    if (!lineaADevolver) return;
     setError(null);
-    const res = await fetch(`/api/compra-detalle/${lineaId}/devolucion`, {
+    const res = await fetch(`/api/compra-detalle/${lineaADevolver}/devolucion`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cantidad: Number(cantidadStr), motivo }),
+      body: JSON.stringify({ cantidad, motivo }),
     });
+    setLineaADevolver(null);
     if (!res.ok) return setError((await res.json()).error);
     cargar();
   }
 
-  if (!compra) return <main><p>Cargando…</p></main>;
+  if (!compra) return <main><PageLoading /></main>;
 
   const puedeConfirmar = !!rol && tienePermiso(rol, "compras", "modificar") && compra.estado === "PENDIENTE";
   const puedeAnular = !!rol && tienePermiso(rol, "compras", "anular") && compra.estado !== "ANULADO";
   const puedeDevolver = !!rol && tienePermiso(rol, "compras", "modificar") && compra.estado === "CONFIRMADO";
 
   return (
-    <main>
-      <h1>Compra — {compra.proveedor.nombre}</h1>
-      <p>Fecha: {new Date(compra.fecha).toLocaleDateString("es-UY")} · Factura: {compra.numeroFactura ?? "—"} · Estado: <b>{compra.estado}</b></p>
-      {compra.estado === "ANULADO" && <p style={{ color: "crimson" }}>Motivo de anulación: {compra.motivoAnulacion}</p>}
+    <main className="flex flex-col gap-6">
+      <PageHeader
+        title={`Compra — ${compra.proveedor.nombre}`}
+        description={`Fecha: ${new Date(compra.fecha).toLocaleDateString("es-UY")} · Factura: ${compra.numeroFactura ?? "—"} · Estado: ${compra.estado}`}
+      />
 
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
+      {compra.estado === "ANULADO" && <Alert>Motivo de anulación: {compra.motivoAnulacion}</Alert>}
+      {error && <Alert>{error}</Alert>}
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        {puedeConfirmar && <button onClick={confirmar} disabled={enviando}>Confirmar compra</button>}
-        {puedeAnular && <button onClick={anular} disabled={enviando}>Anular compra</button>}
+      <div className="flex gap-3">
+        {puedeConfirmar && <Button onClick={confirmar} loading={enviando}>Confirmar compra</Button>}
+        {puedeAnular && <Button variant="danger" onClick={() => setAnulando(true)} disabled={enviando}>Anular compra</Button>}
       </div>
 
-      <table>
-        <thead><tr><th>Producto</th><th>Cantidad</th><th>Costo</th><th>Subtotal</th><th>Devuelto</th>{puedeDevolver && <th></th>}</tr></thead>
+      <Table>
+        <Table.Head>
+          <Table.Row>
+            <Table.HeadCell>Producto</Table.HeadCell>
+            <Table.HeadCell>Cantidad</Table.HeadCell>
+            <Table.HeadCell>Costo</Table.HeadCell>
+            <Table.HeadCell>Subtotal</Table.HeadCell>
+            <Table.HeadCell>Devuelto</Table.HeadCell>
+            {puedeDevolver && <Table.HeadCell />}
+          </Table.Row>
+        </Table.Head>
         <tbody>
           {compra.detalle.map((l) => {
             const devuelto = l.devoluciones.reduce((acc, d) => acc + d.cantidad, 0);
             return (
-              <tr key={l.id}>
-                <td>{l.producto.codigo} — {l.producto.descripcion}</td>
-                <td>{l.cantidad}</td>
-                <td>{l.costoUnitario}</td>
-                <td>{l.subtotal}</td>
-                <td>{devuelto}</td>
-                {puedeDevolver && <td>{devuelto < l.cantidad && <button onClick={() => devolver(l.id)}>Devolver</button>}</td>}
-              </tr>
+              <Table.Row key={l.id}>
+                <Table.Cell>{l.producto.codigo} — {l.producto.descripcion}</Table.Cell>
+                <Table.Cell>{l.cantidad}</Table.Cell>
+                <Table.Cell>{l.costoUnitario}</Table.Cell>
+                <Table.Cell>{l.subtotal}</Table.Cell>
+                <Table.Cell>{devuelto}</Table.Cell>
+                {puedeDevolver && (
+                  <Table.Cell>
+                    {devuelto < l.cantidad && (
+                      <Button variant="secondary" size="sm" onClick={() => setLineaADevolver(l.id)}>Devolver</Button>
+                    )}
+                  </Table.Cell>
+                )}
+              </Table.Row>
             );
           })}
         </tbody>
-      </table>
+      </Table>
 
-      <p style={{ marginTop: 16 }}>Subtotal: {compra.subtotal} · IVA: {compra.iva} · <b>Total: {compra.total}</b></p>
+      <p className="text-sm text-muted-foreground">
+        Subtotal: {compra.subtotal} · IVA: {compra.iva} · <span className="font-semibold text-foreground">Total: {compra.total}</span>
+      </p>
+
+      <PromptDialog
+        open={anulando}
+        title="Anular compra"
+        label="Motivo de la anulación"
+        loading={enviando}
+        onConfirm={anular}
+        onCancel={() => setAnulando(false)}
+      />
+      <DevolucionDialog open={lineaADevolver !== null} onConfirm={devolver} onCancel={() => setLineaADevolver(null)} />
     </main>
   );
 }

@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { cn } from "@/lib/cn";
 
 type Item = { id: string; nombre: string; rol?: string };
 
@@ -19,14 +21,21 @@ export function SeleccionarFerreteriaForm({ items, modoSoporte }: { items: Item[
   }
 
   if (items.length === 0) {
-    return <p>No hay ferreterías {modoSoporte ? "" : "asignadas a tu usuario"} todavía.</p>;
+    return <EmptyState message={`No hay ferreterías ${modoSoporte ? "" : "asignadas a tu usuario "}todavía.`} />;
   }
 
   return (
-    <ul style={{ listStyle: "none", padding: 0, display: "flex", flexDirection: "column", gap: 8, maxWidth: 360 }}>
+    <ul className="flex max-w-sm flex-col gap-2">
       {items.map((item) => (
         <li key={item.id}>
-          <button onClick={() => elegir(item.id)} disabled={enviando !== null} style={{ width: "100%", textAlign: "left", padding: 12 }}>
+          <button
+            onClick={() => elegir(item.id)}
+            disabled={enviando !== null}
+            className={cn(
+              "w-full rounded-md border border-border bg-surface px-4 py-3 text-left text-sm text-foreground transition-colors hover:bg-muted",
+              "disabled:opacity-50 disabled:cursor-not-allowed",
+            )}
+          >
             {item.nombre}
             {item.rol ? ` — ${item.rol}` : ""}
             {enviando === item.id ? " …" : ""}

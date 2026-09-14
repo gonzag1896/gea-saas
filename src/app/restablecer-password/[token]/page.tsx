@@ -2,6 +2,10 @@
 
 import { useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
+import { FormField } from "@/components/ui/FormField";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
+import { Alert } from "@/components/ui/Alert";
 
 export default function RestablecerPasswordPage() {
   const { token } = useParams<{ token: string }>();
@@ -36,19 +40,18 @@ export default function RestablecerPasswordPage() {
 
   if (ok) {
     return (
-      <main style={{ padding: 40 }}>
-        <p>Contraseña actualizada. Redirigiendo al ingreso…</p>
+      <main className="flex min-h-screen flex-col justify-center gap-6 p-10">
+        <p className="text-sm text-foreground">Contraseña actualizada. Redirigiendo al ingreso…</p>
       </main>
     );
   }
 
   return (
-    <main style={{ padding: 40 }}>
-      <h1>Elegir nueva contraseña</h1>
-      <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 320 }}>
-        <label>
-          Nueva contraseña (mínimo 10 caracteres)
-          <input
+    <main className="flex min-h-screen flex-col justify-center gap-6 p-10">
+      <h1 className="text-xl font-semibold text-foreground">Elegir nueva contraseña</h1>
+      <form onSubmit={onSubmit} className="flex max-w-xs flex-col gap-4">
+        <FormField label="Nueva contraseña (mínimo 10 caracteres)">
+          <Input
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -56,11 +59,11 @@ export default function RestablecerPasswordPage() {
             required
             autoFocus
           />
-        </label>
-        {error && <p role="alert" style={{ color: "crimson" }}>{error}</p>}
-        <button type="submit" disabled={enviando}>
+        </FormField>
+        {error && <Alert>{error}</Alert>}
+        <Button type="submit" loading={enviando}>
           {enviando ? "Guardando…" : "Guardar contraseña"}
-        </button>
+        </Button>
       </form>
     </main>
   );

@@ -3,6 +3,10 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { FormField } from "@/components/ui/FormField";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
+import { Alert } from "@/components/ui/Alert";
 
 export function LoginForm() {
   const router = useRouter();
@@ -30,20 +34,18 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 320 }}>
-      <label>
-        Email
-        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
-      </label>
-      <label>
-        Contraseña
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-      </label>
-      {error && <p role="alert" style={{ color: "crimson" }}>{error}</p>}
-      <button type="submit" disabled={enviando}>
+    <form onSubmit={onSubmit} className="flex max-w-xs flex-col gap-4">
+      <FormField label="Email">
+        <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+      </FormField>
+      <FormField label="Contraseña">
+        <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+      </FormField>
+      {error && <Alert>{error}</Alert>}
+      <Button type="submit" loading={enviando}>
         {enviando ? "Ingresando…" : "Ingresar"}
-      </button>
-      <a href="/recuperar-password">Olvidé mi contraseña</a>
+      </Button>
+      <a href="/recuperar-password" className="text-sm text-primary underline underline-offset-2">Olvidé mi contraseña</a>
     </form>
   );
 }

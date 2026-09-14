@@ -1,6 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Card } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Button } from "@/components/ui/Button";
+import { Alert } from "@/components/ui/Alert";
+import { Table } from "@/components/ui/Table";
+import { ActivoBadge } from "@/components/ui/Badge";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 type Categoria = { id: string; nombre: string };
 type SubCategoria = { id: string; nombre: string; activo: boolean; categoriaId: string; categoria: { nombre: string } };
@@ -48,37 +57,54 @@ export default function SubCategoriasPage() {
 
   if (categorias.length === 0) {
     return (
-      <main>
-        <h1>Sub Categorías</h1>
-        <p>Primero creá al menos una categoría.</p>
+      <main className="flex flex-col gap-6">
+        <PageHeader title="Sub Categorías" />
+        <EmptyState message="Primero creá al menos una categoría." />
       </main>
     );
   }
 
   return (
-    <main>
-      <h1>Sub Categorías</h1>
-      <form onSubmit={crear} style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        <select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
-          {categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-        </select>
-        <input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre" required />
-        <button type="submit">Agregar</button>
-      </form>
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
-      <table>
-        <thead><tr><th>Nombre</th><th>Categoría</th><th>Estado</th><th></th></tr></thead>
+    <main className="flex flex-col gap-6">
+      <PageHeader title="Sub Categorías" />
+
+      <Card>
+        <form onSubmit={crear} className="flex flex-wrap gap-3">
+          <Select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)} className="max-w-xs">
+            {categorias.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+          </Select>
+          <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre" required className="max-w-xs" />
+          <Button type="submit">Agregar</Button>
+        </form>
+      </Card>
+
+      {error && <Alert>{error}</Alert>}
+
+      <Table>
+        <Table.Head>
+          <Table.Row>
+            <Table.HeadCell>Nombre</Table.HeadCell>
+            <Table.HeadCell>Categoría</Table.HeadCell>
+            <Table.HeadCell>Estado</Table.HeadCell>
+            <Table.HeadCell />
+          </Table.Row>
+        </Table.Head>
         <tbody>
           {subCategorias.map((s) => (
-            <tr key={s.id}>
-              <td>{s.nombre}</td>
-              <td>{s.categoria.nombre}</td>
-              <td>{s.activo ? "Activo" : "Inactivo"}</td>
-              <td><button onClick={() => toggleActivo(s)}>{s.activo ? "Desactivar" : "Activar"}</button></td>
-            </tr>
+            <Table.Row key={s.id}>
+              <Table.Cell>{s.nombre}</Table.Cell>
+              <Table.Cell>{s.categoria.nombre}</Table.Cell>
+              <Table.Cell><ActivoBadge activo={s.activo} /></Table.Cell>
+              <Table.Cell>
+                <Button variant="secondary" size="sm" onClick={() => toggleActivo(s)}>
+                  {s.activo ? "Desactivar" : "Activar"}
+                </Button>
+              </Table.Cell>
+            </Table.Row>
           ))}
         </tbody>
-      </table>
+      </Table>
+      {subCategorias.length === 0 && <EmptyState message="Todavía no hay sub categorías cargadas." />}
     </main>
   );
 }

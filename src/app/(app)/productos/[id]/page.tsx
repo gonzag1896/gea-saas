@@ -4,6 +4,15 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { tienePermiso } from "@/lib/permisos";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Card } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
+import { Button } from "@/components/ui/Button";
+import { Alert } from "@/components/ui/Alert";
+import { Table } from "@/components/ui/Table";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { PageLoading } from "@/components/ui/PageLoading";
 
 type Producto = { id: string; codigo: string; descripcion: string; stockActual: number; stockMinimo: number };
 type Movimiento = {
@@ -59,45 +68,61 @@ export default function ProductoMovimientosPage() {
     cargar();
   }
 
-  if (!producto) return <main><p>Cargando…</p></main>;
+  if (!producto) return <main><PageLoading /></main>;
 
   return (
-    <main>
-      <h1>{producto.codigo} — {producto.descripcion}</h1>
-      <p>Stock actual: <b>{producto.stockActual}</b> (mínimo: {producto.stockMinimo})</p>
+    <main className="flex flex-col gap-6">
+      <PageHeader
+        title={`${producto.codigo} — ${producto.descripcion}`}
+        description={`Stock actual: ${producto.stockActual} (mínimo: ${producto.stockMinimo})`}
+      />
 
       {puedeAjustar && (
-        <form onSubmit={registrarAjuste} style={{ border: "1px solid #ddd", padding: 16, marginBottom: 24, maxWidth: 480 }}>
-          <h3>Ajustar stock</h3>
-          <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-            <select value={tipo} onChange={(e) => setTipo(e.target.value as typeof tipo)}>
-              <option value="AJUSTE_POSITIVO">Ajuste positivo</option>
-              <option value="AJUSTE_NEGATIVO">Ajuste negativo</option>
-            </select>
-            <input type="number" min="1" value={cantidad} onChange={(e) => setCantidad(e.target.value)} placeholder="Cantidad" style={{ width: 100 }} />
-          </div>
-          <input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Motivo (ej: diferencia de inventario)" style={{ width: "100%", marginBottom: 8 }} required />
-          {error && <p style={{ color: "crimson" }}>{error}</p>}
-          <button type="submit">Registrar ajuste</button>
-        </form>
+        <Card className="max-w-lg">
+          <h3 className="mb-3 text-sm font-semibold text-foreground">Ajustar stock</h3>
+          <form onSubmit={registrarAjuste} className="flex flex-col gap-3">
+            <div className="flex flex-wrap gap-3">
+              <Select value={tipo} onChange={(e) => setTipo(e.target.value as typeof tipo)} className="max-w-[200px]">
+                <option value="AJUSTE_POSITIVO">Ajuste positivo</option>
+                <option value="AJUSTE_NEGATIVO">Ajuste negativo</option>
+              </Select>
+              <Input type="number" min="1" value={cantidad} onChange={(e) => setCantidad(e.target.value)} placeholder="Cantidad" className="max-w-[120px]" />
+            </div>
+            <Input value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Motivo (ej: diferencia de inventario)" required />
+            {error && <Alert>{error}</Alert>}
+            <div>
+              <Button type="submit">Registrar ajuste</Button>
+            </div>
+          </form>
+        </Card>
       )}
 
-      <h3>Historial de movimientos</h3>
-      <table>
-        <thead><tr><th>Fecha</th><th>Tipo</th><th>Cantidad</th><th>Origen</th><th>Motivo</th></tr></thead>
-        <tbody>
-          {movimientos.map((m) => (
-            <tr key={m.id}>
-              <td>{new Date(m.fecha).toLocaleDateString("es-UY")}</td>
-              <td>{ETIQUETA_TIPO[m.tipo]}</td>
-              <td>{m.cantidad}</td>
-              <td>{m.origenTipo}</td>
-              <td>{m.motivo ?? "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {movimientos.length === 0 && <p>Todavía no hay movimientos para este producto.</p>}
+      <div>
+        <h3 className="mb-3 text-sm font-semibold text-foreground">Historial de movimientos</h3>
+        <Table>
+          <Table.Head>
+            <Table.Row>
+              <Table.HeadCell>Fecha</Table.HeadCell>
+              <Table.HeadCell>Tipo</Table.HeadCell>
+              <Table.HeadCell>Cantidad</Table.HeadCell>
+              <Table.HeadCell>Origen</Table.HeadCell>
+              <Table.HeadCell>Motivo</Table.HeadCell>
+            </Table.Row>
+          </Table.Head>
+          <tbody>
+            {movimientos.map((m) => (
+              <Table.Row key={m.id}>
+                <Table.Cell>{new Date(m.fecha).toLocaleDateString("es-UY")}</Table.Cell>
+                <Table.Cell>{ETIQUETA_TIPO[m.tipo]}</Table.Cell>
+                <Table.Cell>{m.cantidad}</Table.Cell>
+                <Table.Cell>{m.origenTipo}</Table.Cell>
+                <Table.Cell>{m.motivo ?? "—"}</Table.Cell>
+              </Table.Row>
+            ))}
+          </tbody>
+        </Table>
+        {movimientos.length === 0 && <EmptyState message="Todavía no hay movimientos para este producto." />}
+      </div>
     </main>
   );
 }

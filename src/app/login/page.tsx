@@ -23,8 +23,8 @@ export default async function LoginPage() {
   }
 
   return (
-    <main style={{ padding: 40 }}>
-      <h1>Ingresar a GEA</h1>
+    <main className="flex min-h-screen flex-col justify-center gap-6 p-10">
+      <h1 className="text-xl font-semibold text-foreground">Ingresar a GEA</h1>
       <LoginForm />
     </main>
   );

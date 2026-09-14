@@ -4,6 +4,15 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { tienePermiso } from "@/lib/permisos";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Card } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
+import { Alert } from "@/components/ui/Alert";
+import { Table } from "@/components/ui/Table";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { PageLoading } from "@/components/ui/PageLoading";
+import { cn } from "@/lib/cn";
 
 type Movimiento = {
   id: string;
@@ -61,41 +70,62 @@ export default function ClienteCuentaCorrientePage() {
     cargar();
   }
 
-  if (!cliente) return <main><p>Cargando…</p></main>;
+  if (!cliente) return <main><PageLoading /></main>;
 
   return (
-    <main>
-      <h1>{cliente.nombre}</h1>
-      <p>Saldo actual: <b style={{ color: saldo > 0 ? "crimson" : undefined }}>{saldo.toFixed(2)}</b></p>
+    <main className="flex flex-col gap-6">
+      <PageHeader
+        title={cliente.nombre}
+        description="Saldo actual"
+        action={
+          <span className={cn("text-xl font-semibold", saldo > 0 ? "text-danger" : "text-foreground")}>
+            {saldo.toFixed(2)}
+          </span>
+        }
+      />
 
       {puedeCobrar && (
-        <form onSubmit={registrarCobro} style={{ border: "1px solid #ddd", padding: 16, marginBottom: 24, maxWidth: 420 }}>
-          <h3>Registrar cobro</h3>
-          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-            <input type="number" step="0.01" min="0.01" value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="Monto entregado" required />
-            <input value={referencia} onChange={(e) => setReferencia(e.target.value)} placeholder="Referencia (opcional)" />
-          </div>
-          {error && <p style={{ color: "crimson" }}>{error}</p>}
-          <button type="submit">Registrar cobro</button>
-        </form>
+        <Card className="max-w-md">
+          <h3 className="mb-3 text-sm font-semibold text-foreground">Registrar cobro</h3>
+          <form onSubmit={registrarCobro} className="flex flex-col gap-3">
+            <div className="flex flex-wrap gap-3">
+              <Input type="number" step="0.01" min="0.01" value={monto} onChange={(e) => setMonto(e.target.value)} placeholder="Monto entregado" required />
+              <Input value={referencia} onChange={(e) => setReferencia(e.target.value)} placeholder="Referencia (opcional)" />
+            </div>
+            {error && <Alert>{error}</Alert>}
+            <div>
+              <Button type="submit">Registrar cobro</Button>
+            </div>
+          </form>
+        </Card>
       )}
 
-      <h3>Movimientos</h3>
-      <table>
-        <thead><tr><th>Fecha</th><th>Concepto</th><th>Debe</th><th>Haber</th><th>Referencia</th></tr></thead>
-        <tbody>
-          {movimientos.map((m) => (
-            <tr key={m.id}>
-              <td>{new Date(m.fecha).toLocaleDateString("es-UY")}</td>
-              <td>{ETIQUETA_ORIGEN[m.origenTipo] ?? m.origenTipo}</td>
-              <td>{Number(m.debe) > 0 ? m.debe : "—"}</td>
-              <td>{Number(m.haber) > 0 ? m.haber : "—"}</td>
-              <td>{m.referencia ?? "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {movimientos.length === 0 && <p>Todavía no hay movimientos para este cliente.</p>}
+      <div>
+        <h3 className="mb-3 text-sm font-semibold text-foreground">Movimientos</h3>
+        <Table>
+          <Table.Head>
+            <Table.Row>
+              <Table.HeadCell>Fecha</Table.HeadCell>
+              <Table.HeadCell>Concepto</Table.HeadCell>
+              <Table.HeadCell>Debe</Table.HeadCell>
+              <Table.HeadCell>Haber</Table.HeadCell>
+              <Table.HeadCell>Referencia</Table.HeadCell>
+            </Table.Row>
+          </Table.Head>
+          <tbody>
+            {movimientos.map((m) => (
+              <Table.Row key={m.id}>
+                <Table.Cell>{new Date(m.fecha).toLocaleDateString("es-UY")}</Table.Cell>
+                <Table.Cell>{ETIQUETA_ORIGEN[m.origenTipo] ?? m.origenTipo}</Table.Cell>
+                <Table.Cell>{Number(m.debe) > 0 ? m.debe : "—"}</Table.Cell>
+                <Table.Cell>{Number(m.haber) > 0 ? m.haber : "—"}</Table.Cell>
+                <Table.Cell>{m.referencia ?? "—"}</Table.Cell>
+              </Table.Row>
+            ))}
+          </tbody>
+        </Table>
+        {movimientos.length === 0 && <EmptyState message="Todavía no hay movimientos para este cliente." />}
+      </div>
     </main>
   );
 }

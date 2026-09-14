@@ -22,9 +22,9 @@ export default async function SeleccionarFerreteriaPage() {
       orderBy: { nombre: "asc" },
     });
     return (
-      <main style={{ padding: 40 }}>
-        <h1>Modo soporte</h1>
-        <p>Elegí una ferretería para entrar en modo lectura como soporte.</p>
+      <main className="flex flex-col gap-4 p-10">
+        <h1 className="text-xl font-semibold text-foreground">Modo soporte</h1>
+        <p className="text-sm text-muted-foreground">Elegí una ferretería para entrar en modo lectura como soporte.</p>
         <SeleccionarFerreteriaForm items={ferreterias} modoSoporte />
       </main>
     );
@@ -36,8 +36,8 @@ export default async function SeleccionarFerreteriaPage() {
   });
 
   return (
-    <main style={{ padding: 40 }}>
-      <h1>Elegir ferretería</h1>
+    <main className="flex flex-col gap-4 p-10">
+      <h1 className="text-xl font-semibold text-foreground">Elegir ferretería</h1>
       <SeleccionarFerreteriaForm
         items={membresias.map((m) => ({ id: m.ferreteriaId, nombre: m.ferreteria.nombre, rol: m.rol }))}
         modoSoporte={false}

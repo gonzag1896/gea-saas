@@ -1,6 +1,7 @@
 import { signOut } from "@/lib/auth";
 import { auditar } from "@/lib/auditoria";
 import { auth } from "@/lib/auth";
+import { Button } from "@/components/ui/Button";
 
 export function LogoutButton() {
   async function cerrarSesion() {
@@ -12,7 +13,9 @@ export function LogoutButton() {
 
   return (
     <form action={cerrarSesion}>
-      <button type="submit">Cerrar sesión</button>
+      <Button type="submit" variant="ghost" size="sm">
+        Cerrar sesión
+      </Button>
     </form>
   );
 }

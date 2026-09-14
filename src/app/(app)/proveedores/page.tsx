@@ -3,6 +3,15 @@
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { tienePermiso } from "@/lib/permisos";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Card } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
+import { Alert } from "@/components/ui/Alert";
+import { Table } from "@/components/ui/Table";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Modal } from "@/components/ui/Modal";
+import { FormField } from "@/components/ui/FormField";
 
 type Proveedor = { id: string; nombre: string; rut: string | null; telefono: string | null; email: string | null };
 
@@ -13,6 +22,8 @@ export default function ProveedoresPage() {
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
   const [form, setForm] = useState({ nombre: "", rut: "", telefono: "", email: "" });
   const [error, setError] = useState<string | null>(null);
+  const [proveedorEnEdicion, setProveedorEnEdicion] = useState<Proveedor | null>(null);
+  const [edicion, setEdicion] = useState({ nombre: "", telefono: "", email: "" });
 
   async function cargar() {
     const res = await fetch("/api/proveedores");
@@ -34,45 +45,85 @@ export default function ProveedoresPage() {
     cargar();
   }
 
-  async function editar(proveedor: Proveedor) {
-    const nombre = prompt("Nombre", proveedor.nombre);
-    if (nombre === null) return;
-    const telefono = prompt("Teléfono", proveedor.telefono ?? "");
-    const email = prompt("Email", proveedor.email ?? "");
-    const res = await fetch(`/api/proveedores/${proveedor.id}`, {
+  function abrirEdicion(proveedor: Proveedor) {
+    setProveedorEnEdicion(proveedor);
+    setEdicion({ nombre: proveedor.nombre, telefono: proveedor.telefono ?? "", email: proveedor.email ?? "" });
+  }
+
+  async function confirmarEdicion(e: React.FormEvent) {
+    e.preventDefault();
+    if (!proveedorEnEdicion) return;
+    const res = await fetch(`/api/proveedores/${proveedorEnEdicion.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nombre, telefono: telefono || undefined, email: email || undefined }),
+      body: JSON.stringify({ nombre: edicion.nombre, telefono: edicion.telefono || undefined, email: edicion.email || undefined }),
     });
     if (!res.ok) setError((await res.json()).error);
+    setProveedorEnEdicion(null);
     cargar();
   }
 
   return (
-    <main>
-      <h1>Proveedores</h1>
-      <form onSubmit={crear} style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-        <input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Nombre" required />
-        <input value={form.rut} onChange={(e) => setForm({ ...form, rut: e.target.value })} placeholder="RUT" />
-        <input value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} placeholder="Teléfono" />
-        <input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Email" />
-        <button type="submit">Agregar</button>
-      </form>
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
-      <table>
-        <thead><tr><th>Nombre</th><th>RUT</th><th>Teléfono</th><th>Email</th>{puedeModificar && <th></th>}</tr></thead>
+    <main className="flex flex-col gap-6">
+      <PageHeader title="Proveedores" />
+
+      <Card>
+        <form onSubmit={crear} className="flex flex-wrap gap-3">
+          <Input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Nombre" required className="max-w-xs" />
+          <Input value={form.rut} onChange={(e) => setForm({ ...form, rut: e.target.value })} placeholder="RUT" className="max-w-[160px]" />
+          <Input value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} placeholder="Teléfono" className="max-w-[160px]" />
+          <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Email" className="max-w-xs" />
+          <Button type="submit">Agregar</Button>
+        </form>
+      </Card>
+
+      {error && <Alert>{error}</Alert>}
+
+      <Table>
+        <Table.Head>
+          <Table.Row>
+            <Table.HeadCell>Nombre</Table.HeadCell>
+            <Table.HeadCell>RUT</Table.HeadCell>
+            <Table.HeadCell>Teléfono</Table.HeadCell>
+            <Table.HeadCell>Email</Table.HeadCell>
+            {puedeModificar && <Table.HeadCell />}
+          </Table.Row>
+        </Table.Head>
         <tbody>
           {proveedores.map((p) => (
-            <tr key={p.id}>
-              <td>{p.nombre}</td>
-              <td>{p.rut ?? "—"}</td>
-              <td>{p.telefono ?? "—"}</td>
-              <td>{p.email ?? "—"}</td>
-              {puedeModificar && <td><button onClick={() => editar(p)}>Editar</button></td>}
-            </tr>
+            <Table.Row key={p.id}>
+              <Table.Cell>{p.nombre}</Table.Cell>
+              <Table.Cell>{p.rut ?? "—"}</Table.Cell>
+              <Table.Cell>{p.telefono ?? "—"}</Table.Cell>
+              <Table.Cell>{p.email ?? "—"}</Table.Cell>
+              {puedeModificar && (
+                <Table.Cell>
+                  <Button variant="secondary" size="sm" onClick={() => abrirEdicion(p)}>Editar</Button>
+                </Table.Cell>
+              )}
+            </Table.Row>
           ))}
         </tbody>
-      </table>
+      </Table>
+      {proveedores.length === 0 && <EmptyState message="Todavía no hay proveedores cargados." />}
+
+      <Modal open={proveedorEnEdicion !== null} onClose={() => setProveedorEnEdicion(null)} title="Editar proveedor">
+        <form onSubmit={confirmarEdicion} className="flex flex-col gap-3">
+          <FormField label="Nombre">
+            <Input value={edicion.nombre} onChange={(e) => setEdicion({ ...edicion, nombre: e.target.value })} required autoFocus />
+          </FormField>
+          <FormField label="Teléfono">
+            <Input value={edicion.telefono} onChange={(e) => setEdicion({ ...edicion, telefono: e.target.value })} />
+          </FormField>
+          <FormField label="Email">
+            <Input value={edicion.email} onChange={(e) => setEdicion({ ...edicion, email: e.target.value })} />
+          </FormField>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="ghost" onClick={() => setProveedorEnEdicion(null)}>Cancelar</Button>
+            <Button type="submit">Guardar</Button>
+          </div>
+        </form>
+      </Modal>
     </main>
   );
 }

@@ -4,6 +4,13 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { tienePermiso } from "@/lib/permisos";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Button } from "@/components/ui/Button";
+import { Alert } from "@/components/ui/Alert";
+import { Table } from "@/components/ui/Table";
+import { PageLoading } from "@/components/ui/PageLoading";
+import { PromptDialog } from "@/components/ui/PromptDialog";
+import { DevolucionDialog } from "@/components/dialogs/DevolucionDialog";
 
 type Linea = {
   id: string;
@@ -35,6 +42,8 @@ export default function VentaDetallePage() {
   const [venta, setVenta] = useState<Venta | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const [anulando, setAnulando] = useState(false);
+  const [lineaADevolver, setLineaADevolver] = useState<string | null>(null);
 
   async function cargar() {
     const res = await fetch(`/api/ventas/${id}`);
@@ -52,9 +61,7 @@ export default function VentaDetallePage() {
     cargar();
   }
 
-  async function anular() {
-    const motivo = prompt("Motivo de la anulación:");
-    if (!motivo) return;
+  async function anular(motivo: string) {
     setError(null);
     setEnviando(true);
     const res = await fetch(`/api/ventas/${id}/anular`, {
@@ -63,61 +70,91 @@ export default function VentaDetallePage() {
       body: JSON.stringify({ motivo }),
     });
     setEnviando(false);
+    setAnulando(false);
     if (!res.ok) return setError((await res.json()).error);
     cargar();
   }
 
-  async function devolver(lineaId: string) {
-    const cantidadStr = prompt("Cantidad a devolver:");
-    if (!cantidadStr) return;
-    const motivo = prompt("Motivo (opcional):") ?? undefined;
+  async function devolver(cantidad: number, motivo: string | undefined) {
+    if (!lineaADevolver) return;
     setError(null);
-    const res = await fetch(`/api/venta-detalle/${lineaId}/devolucion`, {
+    const res = await fetch(`/api/venta-detalle/${lineaADevolver}/devolucion`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cantidad: Number(cantidadStr), motivo }),
+      body: JSON.stringify({ cantidad, motivo }),
     });
+    setLineaADevolver(null);
     if (!res.ok) return setError((await res.json()).error);
     cargar();
   }
 
-  if (!venta) return <main><p>Cargando…</p></main>;
+  if (!venta) return <main><PageLoading /></main>;
 
   const puedeConfirmar = !!rol && tienePermiso(rol, "ventas", "modificar") && venta.estado === "PENDIENTE";
   const puedeAnular = !!rol && tienePermiso(rol, "ventas", "anular") && venta.estado !== "ANULADO";
   const puedeDevolver = !!rol && tienePermiso(rol, "ventas", "modificar") && venta.estado === "CONFIRMADO";
 
   return (
-    <main>
-      <h1>Venta — {venta.cliente.nombre}</h1>
-      <p>Fecha: {new Date(venta.fecha).toLocaleDateString("es-UY")} · Medio de pago: {venta.medioPago} · Estado: <b>{venta.estado}</b></p>
-      {venta.estado === "ANULADO" && <p style={{ color: "crimson" }}>Motivo de anulación: {venta.motivoAnulacion}</p>}
+    <main className="flex flex-col gap-6">
+      <PageHeader
+        title={`Venta — ${venta.cliente.nombre}`}
+        description={`Fecha: ${new Date(venta.fecha).toLocaleDateString("es-UY")} · Medio de pago: ${venta.medioPago} · Estado: ${venta.estado}`}
+      />
 
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
+      {venta.estado === "ANULADO" && <Alert>Motivo de anulación: {venta.motivoAnulacion}</Alert>}
+      {error && <Alert>{error}</Alert>}
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        {puedeConfirmar && <button onClick={confirmar} disabled={enviando}>Confirmar venta</button>}
-        {puedeAnular && <button onClick={anular} disabled={enviando}>Anular venta</button>}
+      <div className="flex gap-3">
+        {puedeConfirmar && <Button onClick={confirmar} loading={enviando}>Confirmar venta</Button>}
+        {puedeAnular && <Button variant="danger" onClick={() => setAnulando(true)} disabled={enviando}>Anular venta</Button>}
       </div>
 
-      <table>
-        <thead><tr><th>Producto</th><th>Cantidad</th><th>Precio</th><th>Total</th><th>Total vigente</th><th>Devuelto</th>{puedeDevolver && <th></th>}</tr></thead>
+      <Table>
+        <Table.Head>
+          <Table.Row>
+            <Table.HeadCell>Producto</Table.HeadCell>
+            <Table.HeadCell>Cantidad</Table.HeadCell>
+            <Table.HeadCell>Precio</Table.HeadCell>
+            <Table.HeadCell>Total</Table.HeadCell>
+            <Table.HeadCell>Total vigente</Table.HeadCell>
+            <Table.HeadCell>Devuelto</Table.HeadCell>
+            {puedeDevolver && <Table.HeadCell />}
+          </Table.Row>
+        </Table.Head>
         <tbody>
           {venta.detalle.map((l) => (
-            <tr key={l.id}>
-              <td>{l.producto.codigo} — {l.producto.descripcion}</td>
-              <td>{l.cantidad}</td>
-              <td>{l.precio}</td>
-              <td>{l.total}</td>
-              <td>{l.totalVigente}</td>
-              <td>{l.cantidadDevuelta}</td>
-              {puedeDevolver && <td>{l.cantidadDevuelta < l.cantidad && <button onClick={() => devolver(l.id)}>Devolver</button>}</td>}
-            </tr>
+            <Table.Row key={l.id}>
+              <Table.Cell>{l.producto.codigo} — {l.producto.descripcion}</Table.Cell>
+              <Table.Cell>{l.cantidad}</Table.Cell>
+              <Table.Cell>{l.precio}</Table.Cell>
+              <Table.Cell>{l.total}</Table.Cell>
+              <Table.Cell>{l.totalVigente}</Table.Cell>
+              <Table.Cell>{l.cantidadDevuelta}</Table.Cell>
+              {puedeDevolver && (
+                <Table.Cell>
+                  {l.cantidadDevuelta < l.cantidad && (
+                    <Button variant="secondary" size="sm" onClick={() => setLineaADevolver(l.id)}>Devolver</Button>
+                  )}
+                </Table.Cell>
+              )}
+            </Table.Row>
           ))}
         </tbody>
-      </table>
+      </Table>
 
-      <p style={{ marginTop: 16 }}>Subtotal: {venta.subtotal} · IVA: {venta.iva} · <b>Total: {venta.total}</b></p>
+      <p className="text-sm text-muted-foreground">
+        Subtotal: {venta.subtotal} · IVA: {venta.iva} · <span className="font-semibold text-foreground">Total: {venta.total}</span>
+      </p>
+
+      <PromptDialog
+        open={anulando}
+        title="Anular venta"
+        label="Motivo de la anulación"
+        loading={enviando}
+        onConfirm={anular}
+        onCancel={() => setAnulando(false)}
+      />
+      <DevolucionDialog open={lineaADevolver !== null} onConfirm={devolver} onCancel={() => setLineaADevolver(null)} />
     </main>
   );
 }
