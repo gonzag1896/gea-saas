@@ -9,8 +9,8 @@ import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Table } from "@/components/ui/Table";
+import { DataTable } from "@/components/ui/DataTable";
 import { EstadoBadge } from "@/components/ui/Badge";
-import { EmptyState } from "@/components/ui/EmptyState";
 
 type Opcion = { id: string; nombre?: string; codigo?: string; descripcion?: string };
 type Compra = {
@@ -140,29 +140,20 @@ export function ComprasClient({
         </Card>
       )}
 
-      <Table>
-        <Table.Head>
-          <Table.Row>
-            <Table.HeadCell>Fecha</Table.HeadCell>
-            <Table.HeadCell>Proveedor</Table.HeadCell>
-            <Table.HeadCell>Total</Table.HeadCell>
-            <Table.HeadCell>Estado</Table.HeadCell>
-            <Table.HeadCell />
-          </Table.Row>
-        </Table.Head>
-        <tbody>
-          {comprasIniciales.map((c) => (
-            <Table.Row key={c.id}>
-              <Table.Cell>{new Date(c.fecha).toLocaleDateString("es-UY")}</Table.Cell>
-              <Table.Cell>{c.proveedor.nombre}</Table.Cell>
-              <Table.Cell className="font-mono tabular-nums">{c.total}</Table.Cell>
-              <Table.Cell><EstadoBadge estado={c.estado} /></Table.Cell>
-              <Table.Cell><a href={`/compras/${c.id}`} className="text-sm text-primary underline underline-offset-2">Ver</a></Table.Cell>
-            </Table.Row>
-          ))}
-        </tbody>
-      </Table>
-      {comprasIniciales.length === 0 && <EmptyState message="Todavía no hay compras registradas." />}
+      <DataTable
+        data={comprasIniciales}
+        rowKey={(c) => c.id}
+        searchValue={(c) => c.proveedor.nombre}
+        searchPlaceholder="Buscar por proveedor…"
+        emptyMessage="Todavía no hay compras registradas."
+        columns={[
+          { key: "fecha", header: "Fecha", sortValue: (c) => new Date(c.fecha).getTime(), render: (c) => new Date(c.fecha).toLocaleDateString("es-UY") },
+          { key: "proveedor", header: "Proveedor", sortValue: (c) => c.proveedor.nombre, render: (c) => c.proveedor.nombre },
+          { key: "total", header: "Total", sortValue: (c) => Number(c.total), className: "font-mono tabular-nums", render: (c) => c.total },
+          { key: "estado", header: "Estado", sortValue: (c) => c.estado, render: (c) => <EstadoBadge estado={c.estado} /> },
+          { key: "acciones", header: "", render: (c) => <a href={`/compras/${c.id}`} className="text-sm text-primary underline underline-offset-2">Ver</a> },
+        ]}
+      />
     </div>
   );
 }

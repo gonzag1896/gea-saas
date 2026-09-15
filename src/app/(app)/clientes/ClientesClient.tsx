@@ -7,8 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
-import { Table } from "@/components/ui/Table";
-import { EmptyState } from "@/components/ui/EmptyState";
+import { DataTable } from "@/components/ui/DataTable";
 import { Modal } from "@/components/ui/Modal";
 import { FormField } from "@/components/ui/FormField";
 
@@ -64,31 +63,25 @@ export function ClientesClient({ clientesIniciales, puedeModificar }: { clientes
 
       {error && <Alert>{error}</Alert>}
 
-      <Table>
-        <Table.Head>
-          <Table.Row>
-            <Table.HeadCell>Nombre</Table.HeadCell>
-            <Table.HeadCell>Teléfono</Table.HeadCell>
-            <Table.HeadCell />
-            {puedeModificar && <Table.HeadCell />}
-          </Table.Row>
-        </Table.Head>
-        <tbody>
-          {clientesIniciales.map((c) => (
-            <Table.Row key={c.id}>
-              <Table.Cell>{c.nombre}</Table.Cell>
-              <Table.Cell>{c.telefono ?? "—"}</Table.Cell>
-              <Table.Cell><a href={`/clientes/${c.id}`} className="text-sm text-primary underline underline-offset-2">Cuenta corriente</a></Table.Cell>
-              {puedeModificar && (
-                <Table.Cell>
-                  <Button variant="secondary" size="sm" onClick={() => abrirEdicion(c)}>Editar</Button>
-                </Table.Cell>
-              )}
-            </Table.Row>
-          ))}
-        </tbody>
-      </Table>
-      {clientesIniciales.length === 0 && <EmptyState message="Todavía no hay clientes cargados." />}
+      <DataTable
+        data={clientesIniciales}
+        rowKey={(c) => c.id}
+        searchValue={(c) => `${c.nombre} ${c.telefono ?? ""}`}
+        searchPlaceholder="Buscar cliente…"
+        emptyMessage="Todavía no hay clientes cargados."
+        columns={[
+          { key: "nombre", header: "Nombre", sortValue: (c) => c.nombre, render: (c) => c.nombre },
+          { key: "telefono", header: "Teléfono", sortValue: (c) => c.telefono ?? "", render: (c) => c.telefono ?? "—" },
+          {
+            key: "acciones", header: "", render: (c) => (
+              <div className="flex items-center gap-2">
+                <a href={`/clientes/${c.id}`} className="text-sm text-primary underline underline-offset-2">Cuenta corriente</a>
+                {puedeModificar && <Button variant="secondary" size="sm" onClick={() => abrirEdicion(c)}>Editar</Button>}
+              </div>
+            ),
+          },
+        ]}
+      />
 
       <Modal open={clienteEnEdicion !== null} onClose={() => setClienteEnEdicion(null)} title="Editar cliente">
         <form onSubmit={confirmarEdicion} className="flex flex-col gap-3">

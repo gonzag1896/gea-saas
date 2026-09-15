@@ -8,9 +8,8 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
-import { Table } from "@/components/ui/Table";
+import { DataTable } from "@/components/ui/DataTable";
 import { ActivoBadge } from "@/components/ui/Badge";
-import { EmptyState } from "@/components/ui/EmptyState";
 
 type Categoria = { id: string; nombre: string };
 type SubCategoria = { id: string; nombre: string; activo: boolean; categoriaId: string; categoria: { nombre: string } };
@@ -78,31 +77,25 @@ export function SubCategoriasClient({ subCategoriasIniciales, categorias }: { su
 
       {error && <Alert>{error}</Alert>}
 
-      <Table>
-        <Table.Head>
-          <Table.Row>
-            <Table.HeadCell>Nombre</Table.HeadCell>
-            <Table.HeadCell>Categoría</Table.HeadCell>
-            <Table.HeadCell>Estado</Table.HeadCell>
-            <Table.HeadCell />
-          </Table.Row>
-        </Table.Head>
-        <tbody>
-          {subCategorias.map((s) => (
-            <Table.Row key={s.id}>
-              <Table.Cell>{s.nombre}</Table.Cell>
-              <Table.Cell>{s.categoria.nombre}</Table.Cell>
-              <Table.Cell><ActivoBadge activo={s.activo} /></Table.Cell>
-              <Table.Cell>
-                <Button variant="secondary" size="sm" onClick={() => toggleActivo(s)}>
-                  {s.activo ? "Desactivar" : "Activar"}
-                </Button>
-              </Table.Cell>
-            </Table.Row>
-          ))}
-        </tbody>
-      </Table>
-      {subCategorias.length === 0 && <EmptyState message="Todavía no hay sub categorías cargadas." />}
+      <DataTable
+        data={subCategorias}
+        rowKey={(s) => s.id}
+        searchValue={(s) => `${s.nombre} ${s.categoria.nombre}`}
+        searchPlaceholder="Buscar sub categoría…"
+        emptyMessage="Todavía no hay sub categorías cargadas."
+        columns={[
+          { key: "nombre", header: "Nombre", sortValue: (s) => s.nombre, render: (s) => s.nombre },
+          { key: "categoria", header: "Categoría", sortValue: (s) => s.categoria.nombre, render: (s) => s.categoria.nombre },
+          { key: "estado", header: "Estado", sortValue: (s) => Number(s.activo), render: (s) => <ActivoBadge activo={s.activo} /> },
+          {
+            key: "acciones", header: "", render: (s) => (
+              <Button variant="secondary" size="sm" onClick={() => toggleActivo(s)}>
+                {s.activo ? "Desactivar" : "Activar"}
+              </Button>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }

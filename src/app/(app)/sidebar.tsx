@@ -1,89 +1,124 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Image from "next/image";
 import {
   LayoutDashboard, FolderTree, FolderOpen, BadgeCheck, Package,
-  Users, Truck, ShoppingCart, Receipt, Wallet, History,
+  Users, Truck, ShoppingCart, Receipt, Wallet,
+  PanelLeftClose, PanelLeftOpen,
 } from "lucide-react";
 import type { RolFerreteria } from "@prisma/client";
 import { tienePermiso } from "@/lib/permisos";
 import { NavLink } from "@/components/ui/NavLink";
-import { FerreteriaSwitcher } from "./ferreteria-switcher";
-import { LogoutButton } from "./logout-button";
+import { cn } from "@/lib/cn";
 
-function GrupoNav({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+const COLLAPSE_KEY = "gea:sidebar-colapsado";
+
+function GrupoNav({ titulo, collapsed, children }: { titulo: string; collapsed: boolean; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{titulo}</span>
+      {!collapsed && (
+        <span className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/60">{titulo}</span>
+      )}
       {children}
     </div>
   );
 }
 
-const iconClass = "h-4 w-4 shrink-0";
+const iconClass = "h-[18px] w-[18px] shrink-0";
 
-// Nav lateral fijo de toda (app) — reemplaza el header+nav horizontal:
-// más ancho útil para contenido, y agrupar Catálogo/Comercial le da
-// estructura a los 9 módulos de negocio en vez de una fila que se corta.
-export function Sidebar({
-  rol,
-  email,
-  ferreteriaId,
-  ferreteriaNombre,
-  soporte,
-  isSuperAdmin,
-}: {
-  rol: RolFerreteria | null | undefined;
-  email: string;
-  ferreteriaId: string | null;
-  ferreteriaNombre: string | null | undefined;
-  soporte: boolean;
-  isSuperAdmin: boolean;
-}) {
+// Sidebar fijo de toda (app): fondo oscuro de marca, colapsable a solo
+// iconos (con tooltip) y persistido en localStorage para que no "salte"
+// entre navegaciones. La identidad de usuario/ferretería vive en el
+// Header, no acá — separar "dónde navego" de "quién soy" es el patrón
+// estándar de un SaaS con esta cantidad de secciones.
+export function Sidebar({ rol }: { rol: RolFerreteria | null | undefined }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [hidratado, setHidratado] = useState(false);
+
+  useEffect(() => {
+    try {
+      setCollapsed(localStorage.getItem(COLLAPSE_KEY) === "1");
+    } catch {
+      // localStorage inaccesible (modo privado estricto, etc.) — se
+      // queda expandido, no es un caso que valga interrumpir el render.
+    }
+    setHidratado(true);
+  }, []);
+
+  function alternar() {
+    setCollapsed((c) => {
+      const next = !c;
+      try {
+        localStorage.setItem(COLLAPSE_KEY, next ? "1" : "0");
+      } catch {
+        // idem arriba
+      }
+      return next;
+    });
+  }
+
   return (
-    <aside className="flex h-screen w-64 shrink-0 flex-col border-r border-border bg-surface">
-      <div className="px-5 py-5">
-        <span className="text-lg font-bold tracking-tight text-foreground">GEA</span>
+    <aside
+      className={cn(
+        "flex h-screen shrink-0 flex-col bg-sidebar transition-[width] duration-150",
+        collapsed ? "w-[68px]" : "w-64",
+        !hidratado && "invisible",
+      )}
+    >
+      <div className={cn("flex items-center border-b border-sidebar-border px-4 py-4", collapsed ? "justify-center" : "justify-between")}>
+        {/* El logo tiene fondo blanco opaco (no transparente) — se muestra
+            en una chapa blanca propia en vez de intentar "quitarle" el
+            fondo con filtros CSS, que con un PNG sin alpha no funciona. */}
+        <div className={cn("flex items-center justify-center rounded-md bg-white p-1.5", collapsed ? "h-9 w-9" : "h-9")}>
+          <Image
+            src="/logo-gea.png"
+            alt="GEA"
+            width={84}
+            height={32}
+            priority
+            className={collapsed ? "h-5 w-5 object-contain object-left" : "h-6 w-auto"}
+          />
+        </div>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-5 overflow-y-auto px-3">
-        <NavLink href="/dashboard" icon={<LayoutDashboard className={iconClass} />}>Dashboard</NavLink>
+      {/* Sin overflow-y en el nav a propósito: con los módulos actuales
+          nunca desborda verticalmente, y un overflow (aunque sea solo en
+          el eje Y) obliga al navegador a clipear también el eje X — que es
+          justo por donde el tooltip del modo colapsado necesita asomar. */}
+      <nav className="flex flex-1 flex-col gap-5 px-3 py-4">
+        <NavLink href="/dashboard" icon={<LayoutDashboard className={iconClass} />} collapsed={collapsed}>Dashboard</NavLink>
 
         {rol && tienePermiso(rol, "productos", "ver") && (
-          <GrupoNav titulo="Catálogo">
-            <NavLink href="/categorias" icon={<FolderTree className={iconClass} />}>Categorías</NavLink>
-            <NavLink href="/sub-categorias" icon={<FolderOpen className={iconClass} />}>Sub Categorías</NavLink>
-            <NavLink href="/marcas" icon={<BadgeCheck className={iconClass} />}>Marcas</NavLink>
-            <NavLink href="/productos" icon={<Package className={iconClass} />}>Productos</NavLink>
+          <GrupoNav titulo="Catálogo" collapsed={collapsed}>
+            <NavLink href="/categorias" icon={<FolderTree className={iconClass} />} collapsed={collapsed}>Categorías</NavLink>
+            <NavLink href="/sub-categorias" icon={<FolderOpen className={iconClass} />} collapsed={collapsed}>Sub Categorías</NavLink>
+            <NavLink href="/marcas" icon={<BadgeCheck className={iconClass} />} collapsed={collapsed}>Marcas</NavLink>
+            <NavLink href="/productos" icon={<Package className={iconClass} />} collapsed={collapsed}>Productos</NavLink>
           </GrupoNav>
         )}
 
         {rol && (tienePermiso(rol, "clientes", "ver") || tienePermiso(rol, "proveedores", "ver") || tienePermiso(rol, "compras", "ver") || tienePermiso(rol, "ventas", "ver") || tienePermiso(rol, "cuentaCorriente", "ver")) && (
-          <GrupoNav titulo="Comercial">
-            {tienePermiso(rol, "clientes", "ver") && <NavLink href="/clientes" icon={<Users className={iconClass} />}>Clientes</NavLink>}
-            {tienePermiso(rol, "proveedores", "ver") && <NavLink href="/proveedores" icon={<Truck className={iconClass} />}>Proveedores</NavLink>}
-            {tienePermiso(rol, "compras", "ver") && <NavLink href="/compras" icon={<ShoppingCart className={iconClass} />}>Compras</NavLink>}
-            {tienePermiso(rol, "ventas", "ver") && <NavLink href="/ventas" icon={<Receipt className={iconClass} />}>Ventas</NavLink>}
-            {tienePermiso(rol, "cuentaCorriente", "ver") && <NavLink href="/cuenta-corriente" icon={<Wallet className={iconClass} />}>Cuenta Corriente</NavLink>}
+          <GrupoNav titulo="Comercial" collapsed={collapsed}>
+            {tienePermiso(rol, "clientes", "ver") && <NavLink href="/clientes" icon={<Users className={iconClass} />} collapsed={collapsed}>Clientes</NavLink>}
+            {tienePermiso(rol, "proveedores", "ver") && <NavLink href="/proveedores" icon={<Truck className={iconClass} />} collapsed={collapsed}>Proveedores</NavLink>}
+            {tienePermiso(rol, "compras", "ver") && <NavLink href="/compras" icon={<ShoppingCart className={iconClass} />} collapsed={collapsed}>Compras</NavLink>}
+            {tienePermiso(rol, "ventas", "ver") && <NavLink href="/ventas" icon={<Receipt className={iconClass} />} collapsed={collapsed}>Ventas</NavLink>}
+            {tienePermiso(rol, "cuentaCorriente", "ver") && <NavLink href="/cuenta-corriente" icon={<Wallet className={iconClass} />} collapsed={collapsed}>Cuenta Corriente</NavLink>}
           </GrupoNav>
-        )}
-
-        {rol && tienePermiso(rol, "auditoria", "ver") && (
-          <NavLink href="/auditoria" icon={<History className={iconClass} />}>Auditoría</NavLink>
         )}
       </nav>
 
-      <div className="flex flex-col gap-2 border-t border-border p-4">
-        <div className="text-sm">
-          <p className="truncate font-medium text-foreground">{email}</p>
-          {ferreteriaId && (
-            <p className="truncate text-xs text-muted-foreground">
-              {soporte ? "Modo soporte — " : ""}
-              {ferreteriaNombre} {rol ? `(${rol})` : ""}
-            </p>
-          )}
-        </div>
-        <div className="flex flex-col gap-1">
-          <FerreteriaSwitcher isSuperAdmin={isSuperAdmin} soporte={soporte} className="w-full justify-start px-2" />
-          <LogoutButton className="w-full justify-start px-2" />
-        </div>
+      <div className={cn("border-t border-sidebar-border p-3", collapsed && "flex justify-center")}>
+        <button
+          type="button"
+          onClick={alternar}
+          className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-sidebar-foreground transition-colors hover:bg-white/10 hover:text-sidebar-foreground-active"
+          aria-label={collapsed ? "Expandir menú" : "Colapsar menú"}
+        >
+          {collapsed ? <PanelLeftOpen className={iconClass} /> : <PanelLeftClose className={iconClass} />}
+          {!collapsed && "Colapsar"}
+        </button>
       </div>
     </aside>
   );

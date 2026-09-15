@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { TrendingUp, ShoppingCart } from "lucide-react";
 import { obtenerContextoTenant } from "@/lib/tenant";
 import { tienePermiso } from "@/lib/permisos";
 import { totalVentasDelMes, totalComprasDelMes, ventasDiarias, comprasPorProveedor } from "@/lib/dashboard";
@@ -8,6 +9,20 @@ import { DashboardCharts } from "./DashboardCharts";
 
 function formatoMoneda(n: number) {
   return n.toLocaleString("es-UY", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+
+function KpiCard({ icon: Icon, label, valor }: { icon: typeof TrendingUp; label: string; valor: number }) {
+  return (
+    <Card className="flex min-w-[220px] flex-1 items-center gap-4">
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+        <Icon className="h-5 w-5" />
+      </div>
+      <div>
+        <div className="text-sm text-muted-foreground">{label}</div>
+        <div className="font-mono text-2xl font-semibold tabular-nums text-foreground">$ {formatoMoneda(valor)}</div>
+      </div>
+    </Card>
+  );
 }
 
 // Igual que el módulo de negocio que ya usa cada rol (sección 6 de la
@@ -36,18 +51,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
       <PageHeader title="Dashboard" description={contexto.ferreteriaNombre} />
 
       <div className="flex flex-wrap gap-4">
-        {ventasMes !== null && (
-          <Card className="min-w-[200px]">
-            <div className="text-sm text-muted-foreground">Ventas en el mes</div>
-            <div className="text-2xl font-semibold text-foreground font-mono tabular-nums">$ {formatoMoneda(ventasMes)}</div>
-          </Card>
-        )}
-        {comprasMes !== null && (
-          <Card className="min-w-[200px]">
-            <div className="text-sm text-muted-foreground">Compras en el mes</div>
-            <div className="text-2xl font-semibold text-foreground font-mono tabular-nums">$ {formatoMoneda(comprasMes)}</div>
-          </Card>
-        )}
+        {ventasMes !== null && <KpiCard icon={TrendingUp} label="Ventas en el mes" valor={ventasMes} />}
+        {comprasMes !== null && <KpiCard icon={ShoppingCart} label="Compras en el mes" valor={comprasMes} />}
       </div>
 
       <DashboardCharts

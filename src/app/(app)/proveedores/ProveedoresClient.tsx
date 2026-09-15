@@ -7,8 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
-import { Table } from "@/components/ui/Table";
-import { EmptyState } from "@/components/ui/EmptyState";
+import { DataTable } from "@/components/ui/DataTable";
 import { Modal } from "@/components/ui/Modal";
 import { FormField } from "@/components/ui/FormField";
 
@@ -69,33 +68,22 @@ export function ProveedoresClient({ proveedoresIniciales, puedeModificar }: { pr
 
       {error && <Alert>{error}</Alert>}
 
-      <Table>
-        <Table.Head>
-          <Table.Row>
-            <Table.HeadCell>Nombre</Table.HeadCell>
-            <Table.HeadCell>RUT</Table.HeadCell>
-            <Table.HeadCell>Teléfono</Table.HeadCell>
-            <Table.HeadCell>Email</Table.HeadCell>
-            {puedeModificar && <Table.HeadCell />}
-          </Table.Row>
-        </Table.Head>
-        <tbody>
-          {proveedoresIniciales.map((p) => (
-            <Table.Row key={p.id}>
-              <Table.Cell>{p.nombre}</Table.Cell>
-              <Table.Cell>{p.rut ?? "—"}</Table.Cell>
-              <Table.Cell>{p.telefono ?? "—"}</Table.Cell>
-              <Table.Cell>{p.email ?? "—"}</Table.Cell>
-              {puedeModificar && (
-                <Table.Cell>
-                  <Button variant="secondary" size="sm" onClick={() => abrirEdicion(p)}>Editar</Button>
-                </Table.Cell>
-              )}
-            </Table.Row>
-          ))}
-        </tbody>
-      </Table>
-      {proveedoresIniciales.length === 0 && <EmptyState message="Todavía no hay proveedores cargados." />}
+      <DataTable
+        data={proveedoresIniciales}
+        rowKey={(p) => p.id}
+        searchValue={(p) => `${p.nombre} ${p.rut ?? ""} ${p.email ?? ""}`}
+        searchPlaceholder="Buscar proveedor…"
+        emptyMessage="Todavía no hay proveedores cargados."
+        columns={[
+          { key: "nombre", header: "Nombre", sortValue: (p) => p.nombre, render: (p) => p.nombre },
+          { key: "rut", header: "RUT", sortValue: (p) => p.rut ?? "", render: (p) => p.rut ?? "—" },
+          { key: "telefono", header: "Teléfono", render: (p) => p.telefono ?? "—" },
+          { key: "email", header: "Email", render: (p) => p.email ?? "—" },
+          ...(puedeModificar
+            ? [{ key: "acciones", header: "", render: (p: Proveedor) => <Button variant="secondary" size="sm" onClick={() => abrirEdicion(p)}>Editar</Button> }]
+            : []),
+        ]}
+      />
 
       <Modal open={proveedorEnEdicion !== null} onClose={() => setProveedorEnEdicion(null)} title="Editar proveedor">
         <form onSubmit={confirmarEdicion} className="flex flex-col gap-3">

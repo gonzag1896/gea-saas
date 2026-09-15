@@ -7,9 +7,8 @@ import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
-import { Table } from "@/components/ui/Table";
+import { DataTable } from "@/components/ui/DataTable";
 import { ActivoBadge } from "@/components/ui/Badge";
-import { EmptyState } from "@/components/ui/EmptyState";
 
 type Categoria = { id: string; nombre: string; activo: boolean };
 
@@ -70,29 +69,24 @@ export function CategoriasClient({ categoriasIniciales }: { categoriasIniciales:
 
       {error && <Alert>{error}</Alert>}
 
-      <Table>
-        <Table.Head>
-          <Table.Row>
-            <Table.HeadCell>Nombre</Table.HeadCell>
-            <Table.HeadCell>Estado</Table.HeadCell>
-            <Table.HeadCell />
-          </Table.Row>
-        </Table.Head>
-        <tbody>
-          {categorias.map((c) => (
-            <Table.Row key={c.id}>
-              <Table.Cell>{c.nombre}</Table.Cell>
-              <Table.Cell><ActivoBadge activo={c.activo} /></Table.Cell>
-              <Table.Cell>
-                <Button variant="secondary" size="sm" onClick={() => toggleActivo(c)}>
-                  {c.activo ? "Desactivar" : "Activar"}
-                </Button>
-              </Table.Cell>
-            </Table.Row>
-          ))}
-        </tbody>
-      </Table>
-      {categorias.length === 0 && <EmptyState message="Todavía no hay categorías cargadas." />}
+      <DataTable
+        data={categorias}
+        rowKey={(c) => c.id}
+        searchValue={(c) => c.nombre}
+        searchPlaceholder="Buscar categoría…"
+        emptyMessage="Todavía no hay categorías cargadas."
+        columns={[
+          { key: "nombre", header: "Nombre", sortValue: (c) => c.nombre, render: (c) => c.nombre },
+          { key: "estado", header: "Estado", sortValue: (c) => Number(c.activo), render: (c) => <ActivoBadge activo={c.activo} /> },
+          {
+            key: "acciones", header: "", render: (c) => (
+              <Button variant="secondary" size="sm" onClick={() => toggleActivo(c)}>
+                {c.activo ? "Desactivar" : "Activar"}
+              </Button>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }

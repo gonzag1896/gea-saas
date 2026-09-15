@@ -3,46 +3,41 @@
 @tailwind utilities;
 
 /*
- * Tokens del Design System GEA — valores PLACEHOLDER (grises + un slate
- * discreto), a propósito neutros: la fase de UI/UX define la paleta de
- * marca definitiva acá, sin tocar ningún componente ni pantalla, porque
- * todos consumen estos nombres semánticos y nunca un color hardcodeado.
- */
-/*
- * Sin variante oscura a propósito: la mitad de la app (inputs, tablas,
- * cards) recién ahora pasa a usar estos tokens y solo `--background`/
- * `--foreground` tenían un valor para modo oscuro — con eso solo, cada
- * superficie nueva (blanca) quedaba con texto claro pensado para fondo
- * oscuro encima, ilegible. Mismo tema en un solo modo hasta que la fase
- * de UI/UX diseñe el modo oscuro real con todos los tokens coordinados.
+ * Tokens del Design System GEA (GEA_Tokens_Moderno_V2) — fuente de verdad
+ * única de color/tipografía. "Secondary" de la especificación (#35B44A,
+ * verde) es semánticamente un color de éxito/positivo, no un gris neutro
+ * de UI — por eso vive acá como --color-success, y --color-secondary
+ * sigue siendo el neutro que usa el botón "secondary" (relleno gris).
  */
 :root {
   --background: #f8fafc;
-  --foreground: #0f172a;
+  --foreground: #111827;
 
-  /* Acento azul saturado — distinto del slate neutro del texto/borde, para
-     que "esto es una acción" (botón primario, link, foco, ítem de nav
-     activo) se distinga a simple vista de "esto es solo texto oscuro". */
-  --color-primary: #2563eb;
+  --color-primary: #0067b8;
   --color-primary-foreground: #ffffff;
-  --color-secondary: #f1f5f9;
-  --color-secondary-foreground: #0f172a;
+  --color-secondary: #eef2f6;
+  --color-secondary-foreground: #111827;
   --color-surface: #ffffff;
-  --color-border: #e2e8f0;
+  --color-border: #e5e7eb;
   --color-muted: #f1f5f9;
   --color-muted-foreground: #64748b;
   --color-danger: #dc2626;
   --color-danger-foreground: #ffffff;
   --color-warning: #b45309;
   --color-warning-foreground: #ffffff;
-  --color-success: #15803d;
+  --color-success: #35b44a;
   --color-success-foreground: #ffffff;
+
+  --color-sidebar: #082f49;
+  --color-sidebar-foreground: #cbd5e1;
+  --color-sidebar-foreground-active: #ffffff;
+  --color-sidebar-border: #123a58;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  font-family: var(--font-source-sans), Arial, Helvetica, sans-serif;
 }
 
 @layer utilities {

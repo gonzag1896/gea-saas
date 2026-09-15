@@ -8,9 +8,8 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
-import { Table } from "@/components/ui/Table";
-import { ActivoBadge } from "@/components/ui/Badge";
-import { EmptyState } from "@/components/ui/EmptyState";
+import { DataTable } from "@/components/ui/DataTable";
+import { ActivoBadge, Badge } from "@/components/ui/Badge";
 import { PromptDialog } from "@/components/ui/PromptDialog";
 
 type Opcion = { id: string; nombre: string };
@@ -130,53 +129,53 @@ export function ProductosClient({
 
       {error && <Alert>{error}</Alert>}
 
-      <Table>
-        <Table.Head>
-          <Table.Row>
-            <Table.HeadCell>Código</Table.HeadCell>
-            <Table.HeadCell>Descripción</Table.HeadCell>
-            <Table.HeadCell>Sub Categoría</Table.HeadCell>
-            <Table.HeadCell>Marca</Table.HeadCell>
-            <Table.HeadCell>Costo</Table.HeadCell>
-            <Table.HeadCell>Venta</Table.HeadCell>
-            <Table.HeadCell>Stock</Table.HeadCell>
-            <Table.HeadCell>Estado</Table.HeadCell>
-            <Table.HeadCell />
-          </Table.Row>
-        </Table.Head>
-        <tbody>
-          {productos.map((p) => (
-            <Table.Row key={p.id}>
-              <Table.Cell>{p.codigo}</Table.Cell>
-              <Table.Cell>{p.descripcion}</Table.Cell>
-              <Table.Cell>{p.subCategoria.nombre}</Table.Cell>
-              <Table.Cell>{p.marca.nombre}</Table.Cell>
-              <Table.Cell className="font-mono tabular-nums">{p.precioCosto}</Table.Cell>
-              <Table.Cell className="font-mono tabular-nums">
-                <div className="flex items-center gap-2">
-                  {p.precioVenta}
-                  {puedeEditarPrecios && (
-                    <Button variant="ghost" size="sm" onClick={() => setProductoEnEdicion(p)}>
-                      Cambiar
-                    </Button>
-                  )}
-                </div>
-              </Table.Cell>
-              <Table.Cell>{p.stockActual} (mín. {p.stockMinimo})</Table.Cell>
-              <Table.Cell><ActivoBadge activo={p.activo} /></Table.Cell>
-              <Table.Cell>
-                <div className="flex items-center gap-2">
-                  <a href={`/productos/${p.id}`} className="text-sm text-primary underline underline-offset-2">Movimientos</a>
-                  <Button variant="secondary" size="sm" onClick={() => toggleActivo(p)}>
-                    {p.activo ? "Desactivar" : "Activar"}
+      <DataTable
+        data={productos}
+        rowKey={(p) => p.id}
+        searchValue={(p) => `${p.codigo} ${p.descripcion} ${p.subCategoria.nombre} ${p.marca.nombre}`}
+        searchPlaceholder="Buscar por código, descripción, sub categoría o marca…"
+        emptyMessage="Todavía no hay productos cargados."
+        columns={[
+          { key: "codigo", header: "Código", sortValue: (p) => p.codigo, render: (p) => p.codigo },
+          { key: "descripcion", header: "Descripción", sortValue: (p) => p.descripcion, render: (p) => p.descripcion },
+          { key: "subCategoria", header: "Sub Categoría", sortValue: (p) => p.subCategoria.nombre, render: (p) => p.subCategoria.nombre },
+          { key: "marca", header: "Marca", sortValue: (p) => p.marca.nombre, render: (p) => p.marca.nombre },
+          { key: "costo", header: "Costo", sortValue: (p) => Number(p.precioCosto), className: "font-mono tabular-nums", render: (p) => p.precioCosto },
+          {
+            key: "venta", header: "Venta", sortValue: (p) => Number(p.precioVenta), className: "font-mono tabular-nums",
+            render: (p) => (
+              <div className="flex items-center gap-2">
+                {p.precioVenta}
+                {puedeEditarPrecios && (
+                  <Button variant="ghost" size="sm" onClick={() => setProductoEnEdicion(p)}>
+                    Cambiar
                   </Button>
-                </div>
-              </Table.Cell>
-            </Table.Row>
-          ))}
-        </tbody>
-      </Table>
-      {productos.length === 0 && <EmptyState message="Todavía no hay productos cargados." />}
+                )}
+              </div>
+            ),
+          },
+          {
+            key: "stock", header: "Stock", sortValue: (p) => p.stockActual,
+            render: (p) => (
+              <div className="flex items-center gap-2">
+                <span>{p.stockActual} (mín. {p.stockMinimo})</span>
+                {p.stockActual <= p.stockMinimo && <Badge variant="warning">Stock bajo</Badge>}
+              </div>
+            ),
+          },
+          { key: "estado", header: "Estado", sortValue: (p) => Number(p.activo), render: (p) => <ActivoBadge activo={p.activo} /> },
+          {
+            key: "acciones", header: "", render: (p) => (
+              <div className="flex items-center gap-2">
+                <a href={`/productos/${p.id}`} className="text-sm text-primary underline underline-offset-2">Movimientos</a>
+                <Button variant="secondary" size="sm" onClick={() => toggleActivo(p)}>
+                  {p.activo ? "Desactivar" : "Activar"}
+                </Button>
+              </div>
+            ),
+          },
+        ]}
+      />
 
       <PromptDialog
         open={productoEnEdicion !== null}

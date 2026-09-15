@@ -9,8 +9,8 @@ import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Table } from "@/components/ui/Table";
+import { DataTable } from "@/components/ui/DataTable";
 import { EstadoBadge } from "@/components/ui/Badge";
-import { EmptyState } from "@/components/ui/EmptyState";
 
 type Opcion = { id: string; nombre?: string; codigo?: string; descripcion?: string };
 type Venta = {
@@ -141,31 +141,21 @@ export function VentasClient({
         </Card>
       )}
 
-      <Table>
-        <Table.Head>
-          <Table.Row>
-            <Table.HeadCell>Fecha</Table.HeadCell>
-            <Table.HeadCell>Cliente</Table.HeadCell>
-            <Table.HeadCell>Medio de pago</Table.HeadCell>
-            <Table.HeadCell>Total</Table.HeadCell>
-            <Table.HeadCell>Estado</Table.HeadCell>
-            <Table.HeadCell />
-          </Table.Row>
-        </Table.Head>
-        <tbody>
-          {ventasIniciales.map((v) => (
-            <Table.Row key={v.id}>
-              <Table.Cell>{new Date(v.fecha).toLocaleDateString("es-UY")}</Table.Cell>
-              <Table.Cell>{v.cliente.nombre}</Table.Cell>
-              <Table.Cell>{v.medioPago}</Table.Cell>
-              <Table.Cell className="font-mono tabular-nums">{v.total}</Table.Cell>
-              <Table.Cell><EstadoBadge estado={v.estado} /></Table.Cell>
-              <Table.Cell><a href={`/ventas/${v.id}`} className="text-sm text-primary underline underline-offset-2">Ver</a></Table.Cell>
-            </Table.Row>
-          ))}
-        </tbody>
-      </Table>
-      {ventasIniciales.length === 0 && <EmptyState message="Todavía no hay ventas registradas." />}
+      <DataTable
+        data={ventasIniciales}
+        rowKey={(v) => v.id}
+        searchValue={(v) => `${v.cliente.nombre} ${v.medioPago}`}
+        searchPlaceholder="Buscar por cliente…"
+        emptyMessage="Todavía no hay ventas registradas."
+        columns={[
+          { key: "fecha", header: "Fecha", sortValue: (v) => new Date(v.fecha).getTime(), render: (v) => new Date(v.fecha).toLocaleDateString("es-UY") },
+          { key: "cliente", header: "Cliente", sortValue: (v) => v.cliente.nombre, render: (v) => v.cliente.nombre },
+          { key: "medioPago", header: "Medio de pago", sortValue: (v) => v.medioPago, render: (v) => v.medioPago },
+          { key: "total", header: "Total", sortValue: (v) => Number(v.total), className: "font-mono tabular-nums", render: (v) => v.total },
+          { key: "estado", header: "Estado", sortValue: (v) => v.estado, render: (v) => <EstadoBadge estado={v.estado} /> },
+          { key: "acciones", header: "", render: (v) => <a href={`/ventas/${v.id}`} className="text-sm text-primary underline underline-offset-2">Ver</a> },
+        ]}
+      />
     </div>
   );
 }

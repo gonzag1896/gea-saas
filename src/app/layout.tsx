@@ -1,22 +1,19 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
+import { Source_Sans_3 } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "@/components/session-provider";
+import { ToastProvider } from "@/components/ui/Toast";
 
-const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
-  weight: "100 900",
-});
-const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
-  variable: "--font-geist-mono",
-  weight: "100 900",
+const sourceSans = Source_Sans_3({
+  subsets: ["latin"],
+  variable: "--font-source-sans",
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
   title: "GEA",
   description: "Gestión Empresarial Ágil — plataforma multi-ferretería",
+  icons: { icon: "/logo-gea.png" },
 };
 
 export default function RootLayout({
@@ -26,10 +23,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        <SessionProvider>{children}</SessionProvider>
+      <body className={`${sourceSans.variable} antialiased`}>
+        <SessionProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </SessionProvider>
       </body>
     </html>
   );

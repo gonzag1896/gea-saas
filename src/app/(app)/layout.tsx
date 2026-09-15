@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { sesionSigueValida } from "@/lib/validar-sesion";
 import { Sidebar } from "./sidebar";
+import { Header } from "./header";
 
 // Guardia de todo lo que cuelga de (app): sin sesión, con una sesión vieja
 // (contraseña cambiada o membresía revocada después de emitido el token),
@@ -28,16 +29,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
-      <Sidebar
-        rol={session.user.rol}
-        email={session.user.email ?? ""}
-        ferreteriaId={session.user.ferreteriaId}
-        ferreteriaNombre={session.user.ferreteriaNombre}
-        soporte={session.user.soporte}
-        isSuperAdmin={session.user.isSuperAdmin}
-      />
-      <main className="min-w-0 flex-1 overflow-x-hidden p-8">{children}</main>
+    <div className="flex h-screen bg-background">
+      <Sidebar rol={session.user.rol} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Header
+          email={session.user.email ?? ""}
+          ferreteriaId={session.user.ferreteriaId}
+          ferreteriaNombre={session.user.ferreteriaNombre}
+          rol={session.user.rol}
+          soporte={session.user.soporte}
+          isSuperAdmin={session.user.isSuperAdmin}
+        />
+        <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-8">{children}</main>
+      </div>
     </div>
   );
 }

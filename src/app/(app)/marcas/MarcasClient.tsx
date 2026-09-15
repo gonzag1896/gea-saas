@@ -7,9 +7,8 @@ import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
-import { Table } from "@/components/ui/Table";
+import { DataTable } from "@/components/ui/DataTable";
 import { ActivoBadge } from "@/components/ui/Badge";
-import { EmptyState } from "@/components/ui/EmptyState";
 
 type Marca = { id: string; nombre: string; activo: boolean };
 
@@ -68,29 +67,24 @@ export function MarcasClient({ marcasIniciales }: { marcasIniciales: Marca[] }) 
 
       {error && <Alert>{error}</Alert>}
 
-      <Table>
-        <Table.Head>
-          <Table.Row>
-            <Table.HeadCell>Nombre</Table.HeadCell>
-            <Table.HeadCell>Estado</Table.HeadCell>
-            <Table.HeadCell />
-          </Table.Row>
-        </Table.Head>
-        <tbody>
-          {marcas.map((m) => (
-            <Table.Row key={m.id}>
-              <Table.Cell>{m.nombre}</Table.Cell>
-              <Table.Cell><ActivoBadge activo={m.activo} /></Table.Cell>
-              <Table.Cell>
-                <Button variant="secondary" size="sm" onClick={() => toggleActivo(m)}>
-                  {m.activo ? "Desactivar" : "Activar"}
-                </Button>
-              </Table.Cell>
-            </Table.Row>
-          ))}
-        </tbody>
-      </Table>
-      {marcas.length === 0 && <EmptyState message="Todavía no hay marcas cargadas." />}
+      <DataTable
+        data={marcas}
+        rowKey={(m) => m.id}
+        searchValue={(m) => m.nombre}
+        searchPlaceholder="Buscar marca…"
+        emptyMessage="Todavía no hay marcas cargadas."
+        columns={[
+          { key: "nombre", header: "Nombre", sortValue: (m) => m.nombre, render: (m) => m.nombre },
+          { key: "estado", header: "Estado", sortValue: (m) => Number(m.activo), render: (m) => <ActivoBadge activo={m.activo} /> },
+          {
+            key: "acciones", header: "", render: (m) => (
+              <Button variant="secondary" size="sm" onClick={() => toggleActivo(m)}>
+                {m.activo ? "Desactivar" : "Activar"}
+              </Button>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }
