@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/db";
 import { crearFerreteriaConUsuario, borrarFixture } from "@/lib/test-fixtures";
-import { calcularSaldoCliente, registrarCobro } from "@/lib/cuenta-corriente";
+import { calcularSaldoCliente, registrarCobro, clientesConSaldoVencido } from "@/lib/cuenta-corriente";
 import { confirmarVenta, registrarDevolucionVenta } from "@/lib/ventas";
 
 describe("cuenta corriente — saldo y cobros", () => {
@@ -91,5 +91,36 @@ describe("cuenta corriente — saldo y cobros", () => {
 
     // 200 + 300 (Debe) - 150 (Haber) = 350
     expect(await calcularSaldoCliente(ferreteria.id, clienteAcum.id)).toBe(350);
+  });
+
+  it("clientesConSaldoVencido detecta un Debe de hace más de 30 días sin cancelar, e ignora al que ya está saldado o es reciente", async () => {
+    const clienteVencido = await prisma.cliente.create({ data: { ferreteriaId: ferreteria.id, nombre: "Vencido CC" } });
+    const clienteAlDia = await prisma.cliente.create({ data: { ferreteriaId: ferreteria.id, nombre: "Al día CC" } });
+    const clienteReciente = await prisma.cliente.create({ data: { ferreteriaId: ferreteria.id, nombre: "Reciente CC" } });
+
+    const hace35Dias = new Date(Date.now() - 35 * 86_400_000);
+    await prisma.cuentaCliente.create({
+      data: { ferreteriaId: ferreteria.id, clienteId: clienteVencido.id, fecha: hace35Dias, debe: 500, haber: 0, origenTipo: "VENTA_CREDITO" },
+    });
+
+    await prisma.cuentaCliente.create({
+      data: { ferreteriaId: ferreteria.id, clienteId: clienteAlDia.id, fecha: hace35Dias, debe: 500, haber: 0, origenTipo: "VENTA_CREDITO" },
+    });
+    await registrarCobro(ferreteria.id, clienteAlDia.id, 500, dueno.id); // saldo queda en 0
+
+    await prisma.cuentaCliente.create({
+      data: { ferreteriaId: ferreteria.id, clienteId: clienteReciente.id, fecha: new Date(), debe: 500, haber: 0, origenTipo: "VENTA_CREDITO" },
+    });
+
+    const vencidos = await clientesConSaldoVencido(ferreteria.id, 30);
+    const ids = vencidos.map((v) => v.id);
+
+    expect(ids).toContain(clienteVencido.id);
+    expect(ids).not.toContain(clienteAlDia.id);
+    expect(ids).not.toContain(clienteReciente.id);
+
+    const fila = vencidos.find((v) => v.id === clienteVencido.id)!;
+    expect(fila.saldo).toBe(500);
+    expect(fila.diasVencido).toBeGreaterThanOrEqual(35);
   });
 });

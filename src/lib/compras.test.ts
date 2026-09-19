@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/db";
 import { crearFerreteriaConUsuario, borrarFixture } from "@/lib/test-fixtures";
-import { confirmarCompra, anularCompra, registrarDevolucionCompra } from "@/lib/compras";
+import { confirmarCompra, anularCompra, registrarDevolucionCompra, crearCompraConfirmada } from "@/lib/compras";
 import { EstadoInvalidoError, CantidadInvalidaError } from "@/lib/errores-dominio";
 import { StockInsuficienteError } from "@/lib/stock";
 
@@ -168,5 +168,39 @@ describe("compras — confirmar, anular, devolución", () => {
     const compra = await crearCompraPendiente(4, 5);
     const detalle = await prisma.compraDetalle.findFirstOrThrow({ where: { compraId: compra.id } });
     await expect(registrarDevolucionCompra(ferreteria.id, detalle.id, 1, undefined, dueno.id)).rejects.toThrow(EstadoInvalidoError);
+  });
+
+  it("crearCompraConfirmada la deja CONFIRMADA de una sola vez, sin paso por Pendiente", async () => {
+    const antes = (await prisma.producto.findUniqueOrThrow({ where: { id: productoId } })).stockActual;
+    const compra = await crearCompraConfirmada(ferreteria.id, dueno.id, {
+      proveedorId,
+      fecha: new Date().toISOString(),
+      medioPago: "CONTADO",
+      detalle: [{ productoId, cantidad: 6, costoUnitario: 8, descuento: 0, tipoIva: "EXENTO" }],
+    });
+
+    expect(compra.estado).toBe("CONFIRMADO");
+    const producto = await prisma.producto.findUniqueOrThrow({ where: { id: productoId } });
+    expect(producto.stockActual - antes).toBe(6);
+    expect(producto.precioCosto.toString()).toBe("8");
+  });
+
+  it("el descuento de línea es un porcentaje, no un monto en $, y el IVA se calcula sobre el neto", async () => {
+    // 10 unidades a $100 con 10% de descuento: neto $900. Con IVA (22%),
+    // total esperado $1098 — no $2200*0.22 sobre el bruto sin descontar.
+    const compra = await crearCompraConfirmada(ferreteria.id, dueno.id, {
+      proveedorId,
+      fecha: new Date().toISOString(),
+      medioPago: "CONTADO",
+      detalle: [{ productoId, cantidad: 10, costoUnitario: 100, descuento: 10, tipoIva: "TOTAL" }],
+    });
+
+    expect(Number(compra.subtotal)).toBe(900);
+    expect(Number(compra.iva)).toBeCloseTo(198, 5);
+    expect(Number(compra.total)).toBeCloseTo(1098, 5);
+
+    const detalle = await prisma.compraDetalle.findFirstOrThrow({ where: { compraId: compra.id } });
+    expect(Number(detalle.descuento)).toBe(10);
+    expect(Number(detalle.subtotal)).toBe(900);
   });
 });

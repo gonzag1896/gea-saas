@@ -19,11 +19,17 @@ describe("permisos por rol — /api/productos/[id]/ajuste-stock", () => {
   let ferreteria: { id: string };
   let cajero: { id: string };
   let deposito: { id: string };
+  // crearFerreteriaConUsuario siempre crea una Ferretería nueva — acá solo
+  // hace falta el Usuario "depósito" (se suma como miembro de `ferreteria`
+  // abajo), pero la Ferretería que trae de acompañante hay que capturarla
+  // igual para poder borrarla en afterAll; si no, queda huérfana para
+  // siempre en la base — exactamente lo que pasaba antes de este fix.
+  let ferreteriaSobranteDeposito: { id: string };
   let productoId: string;
 
   beforeAll(async () => {
     ({ ferreteria, usuario: cajero } = await crearFerreteriaConUsuario(`${sufijo}-c`, "CAJERO"));
-    deposito = (await crearFerreteriaConUsuario(`${sufijo}-x`, "DEPOSITO")).usuario;
+    ({ ferreteria: ferreteriaSobranteDeposito, usuario: deposito } = await crearFerreteriaConUsuario(`${sufijo}-x`, "DEPOSITO"));
     await prisma.ferreteriaUsuario.create({ data: { ferreteriaId: ferreteria.id, usuarioId: deposito.id, rol: "DEPOSITO" } });
 
     const categoria = await prisma.categoria.create({ data: { ferreteriaId: ferreteria.id, nombre: "Cat" } });
@@ -38,6 +44,7 @@ describe("permisos por rol — /api/productos/[id]/ajuste-stock", () => {
     await prisma.movimientoStock.deleteMany({ where: { ferreteriaId: ferreteria.id } });
     await prisma.producto.deleteMany({ where: { ferreteriaId: ferreteria.id } });
     await prisma.ferreteria.delete({ where: { id: ferreteria.id } });
+    await prisma.ferreteria.delete({ where: { id: ferreteriaSobranteDeposito.id } });
     await prisma.usuario.deleteMany({ where: { id: { in: [cajero.id, deposito.id] } } });
   });
 

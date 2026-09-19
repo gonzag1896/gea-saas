@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/db";
 import { crearFerreteriaConUsuario, borrarFixture } from "@/lib/test-fixtures";
-import { confirmarVenta, anularVenta, registrarDevolucionVenta } from "@/lib/ventas";
+import { confirmarVenta, anularVenta, registrarDevolucionVenta, crearVentaConfirmada } from "@/lib/ventas";
 import { EstadoInvalidoError, CantidadInvalidaError } from "@/lib/errores-dominio";
-import { StockInsuficienteError } from "@/lib/stock";
 
 describe("ventas — confirmar, anular, devolución, cuenta corriente", () => {
   const sufijo = `ventas-${Date.now()}`;
@@ -64,14 +63,15 @@ describe("ventas — confirmar, anular, devolución, cuenta corriente", () => {
     expect(movimiento).toMatchObject({ tipo: "SALIDA", cantidad: 10 });
   });
 
-  it("no se puede vender más de lo que hay en stock — la confirmación se bloquea entera", async () => {
+  it("se puede vender más de lo que hay en stock — la venta se confirma y el stock queda negativo", async () => {
     const stockActual = await stockDelProducto();
-    const venta = await crearVentaPendiente(stockActual + 1, 100);
-    await expect(confirmarVenta(ferreteria.id, venta.id, dueno.id)).rejects.toThrow(StockInsuficienteError);
+    const cantidad = Math.max(stockActual, 0) + 5; // supera el stock disponible sea cual sea su signo
+    const venta = await crearVentaPendiente(cantidad, 100);
+    await confirmarVenta(ferreteria.id, venta.id, dueno.id);
 
-    const ventaTrasIntento = await prisma.venta.findUniqueOrThrow({ where: { id: venta.id } });
-    expect(ventaTrasIntento.estado).toBe("PENDIENTE"); // no quedó "confirmada a medias"
-    expect(await stockDelProducto()).toBe(stockActual); // tampoco descontó nada
+    const ventaTrasConfirmar = await prisma.venta.findUniqueOrThrow({ where: { id: venta.id } });
+    expect(ventaTrasConfirmar.estado).toBe("CONFIRMADO");
+    expect(await stockDelProducto()).toBe(stockActual - cantidad);
   });
 
   it("confirmar dos veces la misma venta falla la segunda vez", async () => {
@@ -148,5 +148,54 @@ describe("ventas — confirmar, anular, devolución, cuenta corriente", () => {
     const venta = await crearVentaPendiente(2, 50);
     const detalle = await prisma.ventaDetalle.findFirstOrThrow({ where: { ventaId: venta.id } });
     await expect(registrarDevolucionVenta(ferreteria.id, detalle.id, 1, undefined, dueno.id)).rejects.toThrow(EstadoInvalidoError);
+  });
+
+  it("crearVentaConfirmada la deja CONFIRMADO de una sola vez, sin paso por Pendiente", async () => {
+    const antes = await stockDelProducto();
+    const venta = await crearVentaConfirmada(ferreteria.id, dueno.id, {
+      clienteId,
+      fecha: new Date().toISOString(),
+      tipoIva: "EXENTO",
+      medioPago: "CONTADO",
+      entrega: 0,
+      detalle: [{ productoId, cantidad: 5, precio: 100, descuento: 0 }],
+    });
+
+    expect(venta.estado).toBe("CONFIRMADO");
+    expect(antes - (await stockDelProducto())).toBe(5);
+  });
+
+  it("crearVentaConfirmada con cantidad mayor al stock se confirma igual, con stock negativo", async () => {
+    const stockActual = await stockDelProducto();
+    const cantidad = Math.max(stockActual, 0) + 5;
+
+    const venta = await crearVentaConfirmada(ferreteria.id, dueno.id, {
+      clienteId,
+      fecha: new Date().toISOString(),
+      tipoIva: "EXENTO",
+      medioPago: "CONTADO",
+      entrega: 0,
+      detalle: [{ productoId, cantidad, precio: 100, descuento: 0 }],
+    });
+
+    expect(venta.estado).toBe("CONFIRMADO");
+    expect(await stockDelProducto()).toBe(stockActual - cantidad);
+  });
+
+  it("el descuento de línea es un porcentaje, no un monto en $", async () => {
+    // 4 unidades a $100 con 25% de descuento: total $300, no $100.
+    const venta = await crearVentaConfirmada(ferreteria.id, dueno.id, {
+      clienteId,
+      fecha: new Date().toISOString(),
+      tipoIva: "EXENTO",
+      medioPago: "CONTADO",
+      entrega: 0,
+      detalle: [{ productoId, cantidad: 4, precio: 100, descuento: 25 }],
+    });
+
+    expect(Number(venta.total)).toBe(300);
+    const detalle = await prisma.ventaDetalle.findFirstOrThrow({ where: { ventaId: venta.id } });
+    expect(Number(detalle.descuento)).toBe(25);
+    expect(Number(detalle.total)).toBe(300);
   });
 });

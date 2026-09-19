@@ -2,17 +2,15 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Plus, Pencil, Ban } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
-import { Table } from "@/components/ui/Table";
 import { DataTable } from "@/components/ui/DataTable";
 import { EstadoBadge } from "@/components/ui/Badge";
+import { PromptDialog } from "@/components/ui/PromptDialog";
+import { ExportarButton } from "@/components/ui/ExportarButton";
 
-type Opcion = { id: string; nombre?: string; codigo?: string; descripcion?: string };
 type Compra = {
   id: string;
   fecha: Date;
@@ -20,125 +18,57 @@ type Compra = {
   total: string;
   proveedor: { nombre: string };
 };
-type Linea = { productoId: string; cantidad: string; costoUnitario: string; tipoIva: "EXENTO" | "TOTAL" };
 
 export function ComprasClient({
   comprasIniciales,
-  proveedores,
-  productos,
   puedeCrear,
+  puedeAnular,
 }: {
   comprasIniciales: Compra[];
-  proveedores: Opcion[];
-  productos: Opcion[];
   puedeCrear: boolean;
+  puedeAnular: boolean;
 }) {
   const router = useRouter();
-  const [proveedorId, setProveedorId] = useState(proveedores[0]?.id ?? "");
-  const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
-  const [numeroFactura, setNumeroFactura] = useState("");
-  const [lineas, setLineas] = useState<Linea[]>([]);
-  const [lineaActual, setLineaActual] = useState<Linea>({ productoId: productos[0]?.id ?? "", cantidad: "1", costoUnitario: "", tipoIva: "EXENTO" });
   const [error, setError] = useState<string | null>(null);
+  const [aAnular, setAAnular] = useState<Compra | null>(null);
+  const [anulando, setAnulando] = useState(false);
 
-  function agregarLinea() {
-    if (!lineaActual.productoId || !lineaActual.cantidad || !lineaActual.costoUnitario) return;
-    setLineas([...lineas, lineaActual]);
-    setLineaActual({ ...lineaActual, cantidad: "1", costoUnitario: "" });
-  }
-
-  function quitarLinea(i: number) {
-    setLineas(lineas.filter((_, idx) => idx !== i));
-  }
-
-  async function crearCompra(e: React.FormEvent) {
-    e.preventDefault();
+  async function confirmarAnular(motivo: string) {
+    if (!aAnular) return;
     setError(null);
-    if (lineas.length === 0) return setError("Agregá al menos una línea.");
-
-    const res = await fetch("/api/compras", {
+    setAnulando(true);
+    const res = await fetch(`/api/compras/${aAnular.id}/anular`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        proveedorId,
-        fecha: new Date(fecha).toISOString(),
-        numeroFactura: numeroFactura || undefined,
-        detalle: lineas.map((l) => ({ productoId: l.productoId, cantidad: Number(l.cantidad), costoUnitario: Number(l.costoUnitario), tipoIva: l.tipoIva })),
-      }),
+      body: JSON.stringify({ motivo }),
     });
-    const data = await res.json();
-    if (!res.ok) return setError(data.error);
-    setLineas([]);
-    setNumeroFactura("");
+    setAnulando(false);
+    if (!res.ok) {
+      setError((await res.json()).error);
+      setAAnular(null);
+      return;
+    }
+    setAAnular(null);
     router.refresh();
-  }
-
-  function nombreProducto(id: string) {
-    const p = productos.find((prod) => prod.id === id);
-    return p ? `${p.codigo} — ${p.descripcion}` : id;
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Compras" />
-
-      {puedeCrear && proveedores.length > 0 && productos.length > 0 && (
-        <Card className="max-w-2xl">
-          <h3 className="mb-3 text-sm font-semibold text-foreground">Nueva compra</h3>
-          <form onSubmit={crearCompra} className="flex flex-col gap-3">
-            <div className="flex flex-wrap gap-3">
-              <Select value={proveedorId} onChange={(e) => setProveedorId(e.target.value)} className="max-w-[220px]">
-                {proveedores.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
-              </Select>
-              <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="max-w-[170px]" />
-              <Input value={numeroFactura} onChange={(e) => setNumeroFactura(e.target.value)} placeholder="N° Factura" className="max-w-[160px]" />
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              <Select value={lineaActual.productoId} onChange={(e) => setLineaActual({ ...lineaActual, productoId: e.target.value })} className="max-w-[220px]">
-                {productos.map((p) => <option key={p.id} value={p.id}>{p.codigo} — {p.descripcion}</option>)}
-              </Select>
-              <Input type="number" min="1" value={lineaActual.cantidad} onChange={(e) => setLineaActual({ ...lineaActual, cantidad: e.target.value })} placeholder="Cantidad" className="max-w-[100px]" />
-              <Input type="number" step="0.01" value={lineaActual.costoUnitario} onChange={(e) => setLineaActual({ ...lineaActual, costoUnitario: e.target.value })} placeholder="Costo unitario" className="max-w-[140px]" />
-              <Select value={lineaActual.tipoIva} onChange={(e) => setLineaActual({ ...lineaActual, tipoIva: e.target.value as "EXENTO" | "TOTAL" })} className="max-w-[140px]">
-                <option value="EXENTO">Exento</option>
-                <option value="TOTAL">IVA 22%</option>
-              </Select>
-              <Button type="button" variant="secondary" onClick={agregarLinea}>+ Línea</Button>
-            </div>
-
-            {lineas.length > 0 && (
-              <Table>
-                <Table.Head>
-                  <Table.Row>
-                    <Table.HeadCell>Producto</Table.HeadCell>
-                    <Table.HeadCell>Cant.</Table.HeadCell>
-                    <Table.HeadCell>Costo</Table.HeadCell>
-                    <Table.HeadCell>IVA</Table.HeadCell>
-                    <Table.HeadCell />
-                  </Table.Row>
-                </Table.Head>
-                <tbody>
-                  {lineas.map((l, i) => (
-                    <Table.Row key={i}>
-                      <Table.Cell>{nombreProducto(l.productoId)}</Table.Cell>
-                      <Table.Cell>{l.cantidad}</Table.Cell>
-                      <Table.Cell>{l.costoUnitario}</Table.Cell>
-                      <Table.Cell>{l.tipoIva === "TOTAL" ? "22%" : "Exento"}</Table.Cell>
-                      <Table.Cell><Button type="button" variant="ghost" size="sm" onClick={() => quitarLinea(i)}>Quitar</Button></Table.Cell>
-                    </Table.Row>
-                  ))}
-                </tbody>
-              </Table>
+      <PageHeader
+        title="Compras"
+        action={(
+          <div className="flex items-center gap-2">
+            <ExportarButton reporte="compras" />
+            {puedeCrear && (
+              <Button onClick={() => router.push("/compras/nuevo")}>
+                <Plus className="h-4 w-4" /> Nueva compra
+              </Button>
             )}
+          </div>
+        )}
+      />
 
-            {error && <Alert>{error}</Alert>}
-            <div>
-              <Button type="submit">Registrar compra</Button>
-            </div>
-          </form>
-        </Card>
-      )}
+      {error && <Alert>{error}</Alert>}
 
       <DataTable
         data={comprasIniciales}
@@ -151,8 +81,33 @@ export function ComprasClient({
           { key: "proveedor", header: "Proveedor", sortValue: (c) => c.proveedor.nombre, render: (c) => c.proveedor.nombre },
           { key: "total", header: "Total", sortValue: (c) => Number(c.total), className: "font-mono tabular-nums", render: (c) => c.total },
           { key: "estado", header: "Estado", sortValue: (c) => c.estado, render: (c) => <EstadoBadge estado={c.estado} /> },
-          { key: "acciones", header: "", render: (c) => <a href={`/compras/${c.id}`} className="text-sm text-primary underline underline-offset-2">Ver</a> },
+          {
+            key: "acciones",
+            header: "",
+            headClassName: "w-0",
+            render: (c) => (
+              <div className="flex items-center justify-end gap-1">
+                <Button variant="icon" className="h-8 w-8" aria-label="Ver compra" onClick={() => router.push(`/compras/${c.id}`)}>
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                {puedeAnular && c.estado !== "ANULADO" && (
+                  <Button variant="icon" className="h-8 w-8 hover:text-danger" aria-label="Anular compra" onClick={() => setAAnular(c)}>
+                    <Ban className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ),
+          },
         ]}
+      />
+
+      <PromptDialog
+        open={aAnular !== null}
+        title="Anular compra"
+        label="Motivo de la anulación"
+        loading={anulando}
+        onConfirm={confirmarAnular}
+        onCancel={() => setAAnular(null)}
       />
     </div>
   );

@@ -31,8 +31,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ subCategoria });
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "P2025") {
-      return NextResponse.json({ error: "Sub categoría no encontrada." }, { status: 404 });
+      return NextResponse.json({ error: "Familia no encontrada." }, { status: 404 });
     }
-    return manejarErrorPrisma(error, "Ya existe una sub categoría con ese nombre en esa categoría.");
+    return manejarErrorPrisma(error, "Ya existe una familia con ese nombre en esa categoría.");
   }
 }

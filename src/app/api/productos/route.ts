@@ -31,6 +31,10 @@ export async function POST(req: Request) {
       data: {
         ferreteriaId: resultado.contexto.ferreteriaId,
         codigo: parsed.data.codigo,
+        // "" -> undefined (NULL): dos productos sin código de barras no
+        // deben chocar contra el UNIQUE(ferreteriaId, codigoBarras) — NULL
+        // sí puede repetirse, un string vacío literal no.
+        codigoBarras: parsed.data.codigoBarras || undefined,
         descripcion: parsed.data.descripcion,
         subCategoriaId: parsed.data.subCategoriaId,
         marcaId: parsed.data.marcaId,
@@ -43,6 +47,7 @@ export async function POST(req: Request) {
     });
     return NextResponse.json({ producto }, { status: 201 });
   } catch (error) {
-    return manejarErrorPrisma(error, "Ya existe un producto con ese código.");
+    return manejarErrorPrisma(error, (target) =>
+      target.includes("codigoBarras") ? "Ya existe un producto con ese código de barras." : "Ya existe un producto con ese código.");
   }
 }

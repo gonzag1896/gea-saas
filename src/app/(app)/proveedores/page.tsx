@@ -10,11 +10,16 @@ export default async function ProveedoresPage() {
 
   const proveedores = await prisma.proveedor.findMany({
     where: { ferreteriaId: contexto.ferreteriaId },
-    select: { id: true, nombre: true, rut: true, telefono: true, email: true },
+    select: { id: true, nombre: true, rut: true, telefono: true, email: true, activo: true },
     orderBy: { nombre: "asc" },
   });
 
-  const puedeModificar = tienePermiso(contexto.rol, "proveedores", "modificar");
-
-  return <ProveedoresClient proveedoresIniciales={proveedores} puedeModificar={puedeModificar} />;
+  return (
+    <ProveedoresClient
+      proveedoresIniciales={proveedores}
+      puedeCrear={tienePermiso(contexto.rol, "proveedores", "crear")}
+      puedeEditar={tienePermiso(contexto.rol, "proveedores", "modificar")}
+      puedeEliminar={tienePermiso(contexto.rol, "proveedores", "eliminar")}
+    />
+  );
 }

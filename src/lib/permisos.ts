@@ -7,10 +7,14 @@ export type Modulo =
   | "ajustesStock"
   | "cuentaCorriente"
   | "cobros"
+  | "cuentaProveedores"
+  | "pagosProveedor"
+  | "caja"
   | "clientes"
   | "proveedores"
   | "productos"
   | "precios"
+  | "listasPrecio"
   | "usuarios"
   | "roles"
   | "configuracion"
@@ -36,10 +40,21 @@ const MATRIZ: Record<Modulo, Record<RolFerreteria, Accion[]>> = {
   ajustesStock: { DUENO: ["ver", "crear"], CAJERO: [], DEPOSITO: ["ver", "crear"] },
   cuentaCorriente: { DUENO: ["ver"], CAJERO: ["ver"], DEPOSITO: [] },
   cobros: { DUENO: ["ver", "crear"], CAJERO: ["crear"], DEPOSITO: [] },
-  clientes: { DUENO: ["ver", "crear", "modificar"], CAJERO: ["ver", "crear"], DEPOSITO: [] },
-  proveedores: { DUENO: ["ver", "crear", "modificar"], CAJERO: [], DEPOSITO: ["ver", "crear"] },
+  // Espejo de Cuenta Corriente/Cobros del lado de proveedores: solo Dueño
+  // ve saldos y registra pagos — Depósito gestiona mercadería, no plata.
+  cuentaProveedores: { DUENO: ["ver"], CAJERO: [], DEPOSITO: [] },
+  pagosProveedor: { DUENO: ["ver", "crear"], CAJERO: [], DEPOSITO: [] },
+  // Igual criterio que Cobros: quien maneja el mostrador (Dueño y Cajero)
+  // es quien cierra la caja. Depósito no maneja efectivo.
+  caja: { DUENO: ["ver", "crear"], CAJERO: ["ver", "crear"], DEPOSITO: [] },
+  clientes: { DUENO: ["ver", "crear", "modificar", "eliminar"], CAJERO: ["ver", "crear"], DEPOSITO: [] },
+  proveedores: { DUENO: ["ver", "crear", "modificar", "eliminar"], CAJERO: [], DEPOSITO: ["ver", "crear"] },
   productos: { DUENO: ["ver", "crear", "modificar", "eliminar"], CAJERO: ["ver"], DEPOSITO: ["ver", "crear", "modificar"] },
   precios: { DUENO: ["ver", "modificar"], CAJERO: ["ver"], DEPOSITO: ["ver"] },
+  // Mismo criterio que Precios: administrar las listas (crear "Mayorista",
+  // cargar sus precios) es exclusivo de Dueño. Cajero solo necesita verlas
+  // para entender por qué a un cliente le sugiere otro precio.
+  listasPrecio: { DUENO: ["ver", "crear", "modificar", "eliminar"], CAJERO: ["ver"], DEPOSITO: [] },
   usuarios: { DUENO: ["ver", "crear", "modificar", "eliminar"], CAJERO: [], DEPOSITO: [] },
   roles: { DUENO: ["ver", "modificar"], CAJERO: [], DEPOSITO: [] },
   configuracion: { DUENO: ["ver", "modificar"], CAJERO: [], DEPOSITO: [] },

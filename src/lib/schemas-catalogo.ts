@@ -32,8 +32,9 @@ export const modificarMarcaSchema = z.object({
 // única fuente de verdad del stock (ver prisma/schema.prisma).
 export const crearProductoSchema = z.object({
   codigo: z.string().min(1, "El código es obligatorio."),
+  codigoBarras: z.string().optional(),
   descripcion: z.string().min(1, "La descripción es obligatoria."),
-  subCategoriaId: z.string().min(1, "La sub categoría es obligatoria."),
+  subCategoriaId: z.string().min(1, "La familia es obligatoria."),
   marcaId: z.string().min(1, "La marca es obligatoria."),
   moneda: z.enum(["UYU", "USD"]).optional(),
   precioCosto: z.number().nonnegative().optional(),
@@ -47,6 +48,7 @@ export const crearProductoSchema = z.object({
 // del catálogo (módulo "productos", que Depósito también tiene).
 export const modificarProductoGeneralSchema = z.object({
   descripcion: z.string().min(1).optional(),
+  codigoBarras: z.string().optional(),
   subCategoriaId: z.string().min(1).optional(),
   marcaId: z.string().min(1).optional(),
   moneda: z.enum(["UYU", "USD"]).optional(),
@@ -62,13 +64,29 @@ export const modificarProductoPrecioSchema = z.object({
 export const crearClienteSchema = z.object({
   nombre: z.string().min(1, "El nombre es obligatorio."),
   telefono: z.string().optional(),
+  listaPrecioId: z.string().optional(),
 });
-// Sin "activo": la matriz de permisos (Revisión técnica final, sección 6)
-// no le da acción "eliminar" a ningún rol sobre Clientes — a diferencia de
-// Productos/Usuarios, acá no se aprobó una baja lógica.
 export const modificarClienteSchema = z.object({
   nombre: z.string().min(1).optional(),
   telefono: z.string().optional(),
+  listaPrecioId: z.string().optional(),
+  activo: z.boolean().optional(),
+});
+
+export const crearListaPrecioSchema = z.object({
+  nombre: z.string().min(1, "El nombre es obligatorio."),
+});
+export const modificarListaPrecioSchema = z.object({
+  nombre: z.string().min(1).optional(),
+  activo: z.boolean().optional(),
+});
+
+// Un precio por lista para un producto — null en el mapa borra el
+// override (vuelve a usar el precio base). No confundir con
+// modificarProductoPrecioSchema: ese es el precio base, este el de una
+// lista puntual, y viven en endpoints separados a propósito.
+export const guardarPreciosListaSchema = z.object({
+  precios: z.record(z.string(), z.number().nonnegative().nullable()),
 });
 
 export const crearProveedorSchema = z.object({
@@ -77,11 +95,10 @@ export const crearProveedorSchema = z.object({
   telefono: z.string().optional(),
   email: z.string().email().optional().or(z.literal("")),
 });
-// Mismo motivo que Cliente: sin "activo", la matriz no aprobó baja lógica
-// para Proveedores.
 export const modificarProveedorSchema = z.object({
   nombre: z.string().min(1).optional(),
   rut: z.string().optional(),
   telefono: z.string().optional(),
   email: z.string().email().optional().or(z.literal("")),
+  activo: z.boolean().optional(),
 });

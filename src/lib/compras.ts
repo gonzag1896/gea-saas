@@ -1,7 +1,97 @@
 import { prisma } from "@/lib/db";
+import type { crearCompraSchema } from "@/lib/schemas-compras";
 import { aplicarMovimientoStock } from "@/lib/stock";
 import { auditar } from "@/lib/auditoria";
 import { EntidadNoEncontradaError, EstadoInvalidoError, CantidadInvalidaError } from "@/lib/errores-dominio";
+import type { z } from "zod";
+
+// Alta y confirmación en un solo paso: mismo criterio que
+// crearVentaConfirmada() en @/lib/ventas — el negocio pidió sacar el
+// estado Pendiente del flujo normal, una compra se carga una sola vez.
+export async function crearCompraConfirmada(
+  ferreteriaId: string,
+  usuarioId: string,
+  datos: z.infer<typeof crearCompraSchema>,
+) {
+  // l.descuento son puntos porcentuales (0-100), igual criterio que
+  // VentaDetalle — se aplica sobre cantidad*costoUnitario antes de sumar
+  // subtotal e IVA de la línea.
+  const netoLinea = (l: (typeof datos.detalle)[number]) => l.cantidad * l.costoUnitario * (1 - l.descuento / 100);
+  const subtotal = datos.detalle.reduce((acc, l) => acc + netoLinea(l), 0);
+  const iva = datos.detalle.reduce((acc, l) => acc + (l.tipoIva === "TOTAL" ? netoLinea(l) * 0.22 : 0), 0);
+  const fecha = new Date(datos.fecha);
+
+  const compra = await prisma.$transaction(async (tx) => {
+    const compra = await tx.compra.create({
+      data: {
+        ferreteriaId,
+        proveedorId: datos.proveedorId,
+        fecha,
+        numeroFactura: datos.numeroFactura || undefined,
+        facturaPdfUrl: datos.facturaPdfUrl || undefined,
+        observaciones: datos.observaciones,
+        registradoPorUsuarioId: usuarioId,
+        estado: "CONFIRMADO",
+        medioPago: datos.medioPago,
+        subtotal,
+        iva,
+        total: subtotal + iva,
+        detalle: {
+          create: datos.detalle.map((l) => ({
+            productoId: l.productoId,
+            cantidad: l.cantidad,
+            costoUnitario: l.costoUnitario,
+            descuento: l.descuento,
+            tipoIva: l.tipoIva,
+            subtotal: netoLinea(l),
+          })),
+        },
+      },
+      include: { detalle: true },
+    });
+
+    for (const linea of compra.detalle) {
+      // Puede tirar StockInsuficienteError en teoría (no debería pasar en
+      // una ENTRADA, pero aplicarMovimientoStock es el mismo punto único
+      // para ambos sentidos) — revierte toda la transacción si pasa.
+      await aplicarMovimientoStock(tx, {
+        ferreteriaId,
+        productoId: linea.productoId,
+        tipo: "ENTRADA",
+        cantidad: linea.cantidad,
+        fecha: compra.fecha,
+        origenTipo: "COMPRA",
+        origenId: compra.id,
+        registradoPorUsuarioId: usuarioId,
+      });
+      await tx.producto.update({
+        where: { id_ferreteriaId: { id: linea.productoId, ferreteriaId } },
+        data: { precioCosto: linea.costoUnitario, fechaUltCompra: compra.fecha },
+      });
+    }
+
+    if (compra.medioPago === "CREDITO") {
+      await tx.cuentaProveedor.create({
+        data: {
+          ferreteriaId,
+          proveedorId: compra.proveedorId,
+          fecha: compra.fecha,
+          debe: compra.total,
+          haber: 0,
+          origenTipo: "COMPRA_CREDITO",
+          origenId: compra.id,
+          registradoPorUsuarioId: usuarioId,
+        },
+      });
+    }
+
+    return compra;
+  });
+
+  await auditar({ accion: "COMPRA_CREA", usuarioId, ferreteriaId, entidad: "Compra", entidadId: compra.id });
+
+  return compra;
+}
 
 // AltaMovimientoCompra del sistema original: entrada de stock por línea +
 // actualización de costo y fecha de última compra del producto, todo en
@@ -73,7 +163,9 @@ export async function anularCompra(ferreteriaId: string, compraId: string, usuar
     }
 
     if (habiaConfirmada) {
+      const compra = await tx.compra.findUniqueOrThrow({ where: { id_ferreteriaId: { id: compraId, ferreteriaId } } });
       const detalle = await tx.compraDetalle.findMany({ where: { compraId, ferreteriaId }, include: { devoluciones: true } });
+      let montoARevertir = 0;
       for (const linea of detalle) {
         // Si la línea ya tuvo una devolución parcial, esas unidades salieron
         // por un movimiento aparte que ya quedó registrado — revertir de
@@ -94,6 +186,22 @@ export async function anularCompra(ferreteriaId: string, compraId: string, usuar
           origenTipo: "COMPRA",
           origenId: compraId,
           registradoPorUsuarioId: usuarioId,
+        });
+        montoARevertir += cantidadARevertir * Number(linea.costoUnitario) * (1 - Number(linea.descuento) / 100);
+      }
+
+      if (compra.medioPago === "CREDITO" && montoARevertir > 0) {
+        await tx.cuentaProveedor.create({
+          data: {
+            ferreteriaId,
+            proveedorId: compra.proveedorId,
+            fecha: new Date(),
+            debe: 0,
+            haber: montoARevertir,
+            origenTipo: "ANULACION_COMPRA_CREDITO",
+            origenId: compraId,
+            registradoPorUsuarioId: usuarioId,
+          },
         });
       }
     }
@@ -140,6 +248,22 @@ export async function registrarDevolucionCompra(
       origenId: compraDetalleId,
       registradoPorUsuarioId: usuarioId,
     });
+
+    if (linea.compra.medioPago === "CREDITO") {
+      const montoDevuelto = cantidad * Number(linea.costoUnitario) * (1 - Number(linea.descuento) / 100);
+      await tx.cuentaProveedor.create({
+        data: {
+          ferreteriaId,
+          proveedorId: linea.compra.proveedorId,
+          fecha: new Date(),
+          debe: 0,
+          haber: montoDevuelto,
+          origenTipo: "DEVOLUCION_COMPRA",
+          origenId: compraDetalleId,
+          registradoPorUsuarioId: usuarioId,
+        },
+      });
+    }
 
     return tx.devolucionCompra.create({
       data: { ferreteriaId, compraDetalleId, cantidad, motivo, registradoPorUsuarioId: usuarioId },

@@ -25,7 +25,12 @@ export async function POST(req: Request) {
   // Cliente no tiene UNIQUE de negocio (igual que en el GeneXus original) —
   // no hace falta manejar P2002 acá.
   const cliente = await prisma.cliente.create({
-    data: { ferreteriaId: resultado.contexto.ferreteriaId, nombre: parsed.data.nombre, telefono: parsed.data.telefono },
+    data: {
+      ferreteriaId: resultado.contexto.ferreteriaId,
+      nombre: parsed.data.nombre,
+      telefono: parsed.data.telefono,
+      listaPrecioId: parsed.data.listaPrecioId || undefined,
+    },
   });
   return NextResponse.json({ cliente }, { status: 201 });
 }

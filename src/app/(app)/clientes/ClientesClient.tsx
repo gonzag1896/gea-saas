@@ -1,70 +1,95 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Plus, Pencil, Trash2, RotateCcw } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { DataTable } from "@/components/ui/DataTable";
-import { Modal } from "@/components/ui/Modal";
-import { FormField } from "@/components/ui/FormField";
+import { ActivoBadge } from "@/components/ui/Badge";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
-type Cliente = { id: string; nombre: string; telefono: string | null };
+type Cliente = { id: string; nombre: string; telefono: string | null; activo: boolean };
 
-export function ClientesClient({ clientesIniciales, puedeModificar }: { clientesIniciales: Cliente[]; puedeModificar: boolean }) {
+export function ClientesClient({
+  clientesIniciales,
+  puedeCrear,
+  puedeEditar,
+  puedeEliminar,
+}: {
+  clientesIniciales: Cliente[];
+  puedeCrear: boolean;
+  puedeEditar: boolean;
+  puedeEliminar: boolean;
+}) {
   const router = useRouter();
-  const [nombre, setNombre] = useState("");
-  const [telefono, setTelefono] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [clienteEnEdicion, setClienteEnEdicion] = useState<Cliente | null>(null);
-  const [edicion, setEdicion] = useState({ nombre: "", telefono: "" });
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  const [aEliminar, setAEliminar] = useState<Cliente | null>(null);
+  const [eliminando, setEliminando] = useState(false);
 
-  async function crear(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    const res = await fetch("/api/clientes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nombre, telefono: telefono || undefined }) });
-    const data = await res.json();
-    if (!res.ok) return setError(data.error);
-    setNombre("");
-    setTelefono("");
+  useEffect(() => {
+    setOverrides((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const c of clientesIniciales) {
+        if (next[c.id] !== undefined && next[c.id] === c.activo) {
+          delete next[c.id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [clientesIniciales]);
+
+  const clientes = clientesIniciales.map((c) => (overrides[c.id] !== undefined ? { ...c, activo: overrides[c.id] } : c));
+
+  async function reactivar(cliente: Cliente) {
+    setOverrides((o) => ({ ...o, [cliente.id]: true }));
+    const res = await fetch(`/api/clientes/${cliente.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ activo: true }),
+    });
+    if (!res.ok) setError((await res.json()).error);
     router.refresh();
   }
 
-  function abrirEdicion(cliente: Cliente) {
-    setClienteEnEdicion(cliente);
-    setEdicion({ nombre: cliente.nombre, telefono: cliente.telefono ?? "" });
-  }
-
-  async function confirmarEdicion(e: React.FormEvent) {
-    e.preventDefault();
-    if (!clienteEnEdicion) return;
-    await fetch(`/api/clientes/${clienteEnEdicion.id}`, {
+  async function confirmarEliminar() {
+    if (!aEliminar) return;
+    setEliminando(true);
+    const res = await fetch(`/api/clientes/${aEliminar.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nombre: edicion.nombre, telefono: edicion.telefono || undefined }),
+      body: JSON.stringify({ activo: false }),
     });
-    setClienteEnEdicion(null);
+    setEliminando(false);
+    if (!res.ok) {
+      setError((await res.json()).error);
+      setAEliminar(null);
+      return;
+    }
+    setOverrides((o) => ({ ...o, [aEliminar.id]: false }));
+    setAEliminar(null);
     router.refresh();
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Clientes" />
-
-      <Card>
-        <form onSubmit={crear} className="flex flex-wrap gap-3">
-          <Input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Nombre" required className="max-w-xs" />
-          <Input value={telefono} onChange={(e) => setTelefono(e.target.value)} placeholder="Teléfono" className="max-w-xs" />
-          <Button type="submit">Agregar</Button>
-        </form>
-      </Card>
+      <PageHeader
+        title="Clientes"
+        action={puedeCrear && (
+          <Button onClick={() => router.push("/clientes/nuevo")}>
+            <Plus className="h-4 w-4" /> Nuevo cliente
+          </Button>
+        )}
+      />
 
       {error && <Alert>{error}</Alert>}
 
       <DataTable
-        data={clientesIniciales}
+        data={clientes}
         rowKey={(c) => c.id}
         searchValue={(c) => `${c.nombre} ${c.telefono ?? ""}`}
         searchPlaceholder="Buscar cliente…"
@@ -72,31 +97,45 @@ export function ClientesClient({ clientesIniciales, puedeModificar }: { clientes
         columns={[
           { key: "nombre", header: "Nombre", sortValue: (c) => c.nombre, render: (c) => c.nombre },
           { key: "telefono", header: "Teléfono", sortValue: (c) => c.telefono ?? "", render: (c) => c.telefono ?? "—" },
+          { key: "estado", header: "Estado", sortValue: (c) => Number(c.activo), render: (c) => <ActivoBadge activo={c.activo} /> },
           {
-            key: "acciones", header: "", render: (c) => (
-              <div className="flex items-center gap-2">
+            key: "acciones",
+            header: "",
+            headClassName: "w-0",
+            render: (c) => (
+              <div className="flex items-center justify-end gap-1">
                 <a href={`/clientes/${c.id}`} className="text-sm text-primary underline underline-offset-2">Cuenta corriente</a>
-                {puedeModificar && <Button variant="secondary" size="sm" onClick={() => abrirEdicion(c)}>Editar</Button>}
+                {puedeEditar && (
+                  <Button variant="icon" className="h-8 w-8" aria-label={`Editar ${c.nombre}`} onClick={() => router.push(`/clientes/${c.id}/editar`)}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                )}
+                {puedeEliminar && c.activo && (
+                  <Button variant="icon" className="h-8 w-8 hover:text-danger" aria-label={`Desactivar ${c.nombre}`} onClick={() => setAEliminar(c)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+                {puedeEliminar && !c.activo && (
+                  <Button variant="icon" className="h-8 w-8 hover:text-success" aria-label={`Reactivar ${c.nombre}`} onClick={() => reactivar(c)}>
+                    <RotateCcw className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             ),
           },
         ]}
       />
 
-      <Modal open={clienteEnEdicion !== null} onClose={() => setClienteEnEdicion(null)} title="Editar cliente">
-        <form onSubmit={confirmarEdicion} className="flex flex-col gap-3">
-          <FormField label="Nombre">
-            <Input value={edicion.nombre} onChange={(e) => setEdicion({ ...edicion, nombre: e.target.value })} required autoFocus />
-          </FormField>
-          <FormField label="Teléfono">
-            <Input value={edicion.telefono} onChange={(e) => setEdicion({ ...edicion, telefono: e.target.value })} />
-          </FormField>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={() => setClienteEnEdicion(null)}>Cancelar</Button>
-            <Button type="submit">Guardar</Button>
-          </div>
-        </form>
-      </Modal>
+      <ConfirmDialog
+        open={aEliminar !== null}
+        title="Desactivar cliente"
+        message={aEliminar ? `¿Desactivar "${aEliminar.nombre}"? Vas a poder reactivarlo cuando quieras.` : ""}
+        confirmLabel="Desactivar"
+        variant="danger"
+        loading={eliminando}
+        onConfirm={confirmarEliminar}
+        onCancel={() => setAEliminar(null)}
+      />
     </div>
   );
 }

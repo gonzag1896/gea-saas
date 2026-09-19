@@ -10,11 +10,16 @@ export default async function ClientesPage() {
 
   const clientes = await prisma.cliente.findMany({
     where: { ferreteriaId: contexto.ferreteriaId },
-    select: { id: true, nombre: true, telefono: true },
+    select: { id: true, nombre: true, telefono: true, activo: true },
     orderBy: { nombre: "asc" },
   });
 
-  const puedeModificar = tienePermiso(contexto.rol, "clientes", "modificar");
-
-  return <ClientesClient clientesIniciales={clientes} puedeModificar={puedeModificar} />;
+  return (
+    <ClientesClient
+      clientesIniciales={clientes}
+      puedeCrear={tienePermiso(contexto.rol, "clientes", "crear")}
+      puedeEditar={tienePermiso(contexto.rol, "clientes", "modificar")}
+      puedeEliminar={tienePermiso(contexto.rol, "clientes", "eliminar")}
+    />
+  );
 }

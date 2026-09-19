@@ -6,6 +6,7 @@ import { FormField } from "@/components/ui/FormField";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
+import { AuthCard } from "@/components/ui/AuthCard";
 
 export default function RestablecerPasswordPage() {
   const { token } = useParams<{ token: string }>();
@@ -40,16 +41,15 @@ export default function RestablecerPasswordPage() {
 
   if (ok) {
     return (
-      <main className="flex min-h-screen flex-col justify-center gap-6 p-10">
-        <p className="text-sm text-foreground">Contraseña actualizada. Redirigiendo al ingreso…</p>
-      </main>
+      <AuthCard title="Contraseña actualizada">
+        <p className="text-sm text-foreground">Redirigiendo al ingreso…</p>
+      </AuthCard>
     );
   }
 
   return (
-    <main className="flex min-h-screen flex-col justify-center gap-6 p-10">
-      <h1 className="text-xl font-semibold text-foreground">Elegir nueva contraseña</h1>
-      <form onSubmit={onSubmit} className="flex max-w-xs flex-col gap-4">
+    <AuthCard title="Elegir nueva contraseña">
+      <form onSubmit={onSubmit} className="flex flex-col gap-4">
         <FormField label="Nueva contraseña (mínimo 10 caracteres)">
           <Input
             type="password"
@@ -58,13 +58,14 @@ export default function RestablecerPasswordPage() {
             minLength={10}
             required
             autoFocus
+            placeholder="••••••••"
           />
         </FormField>
         {error && <Alert>{error}</Alert>}
-        <Button type="submit" loading={enviando}>
+        <Button type="submit" loading={enviando} className="w-full justify-center">
           {enviando ? "Guardando…" : "Guardar contraseña"}
         </Button>
       </form>
-    </main>
+    </AuthCard>
   );
 }

@@ -16,6 +16,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const cliente = await prisma.cliente.findUnique({ where: { id_ferreteriaId: { id: params.id, ferreteriaId } } });
   if (!cliente) return NextResponse.json({ error: "Cliente no encontrado." }, { status: 404 });
 
-  await registrarCobro(ferreteriaId, params.id, parsed.data.monto, usuarioId, parsed.data.referencia);
+  await registrarCobro(ferreteriaId, params.id, parsed.data.monto, usuarioId, parsed.data.referencia, parsed.data.medioPago);
   return NextResponse.json({ ok: true }, { status: 201 });
 }

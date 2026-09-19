@@ -82,20 +82,20 @@ export function CuentaCorrienteProveedoresClient({ proveedores }: { proveedores:
         <EmptyState message={busqueda ? "No hay proveedores que coincidan con la búsqueda." : "Todavía no hay proveedores cargados."} />
       ) : (
         <div className="overflow-x-auto border border-gray-200 rounded-lg">
-          <table className="w-full">
+          <table className="w-full table-fixed">
             {/* Encabezados */}
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="px-6 py-3 text-left">
+                <th className="w-2/5 px-6 py-3 text-left">
                   <SortHeader label="Proveedor" sortBy="nombre" />
                 </th>
-                <th className="px-6 py-3 text-left text-sm font-semibold text-foreground">
+                <th className="w-1/5 px-6 py-3 text-left text-sm font-semibold text-foreground">
                   Teléfono
                 </th>
-                <th className="px-6 py-3 text-right">
+                <th className="w-1/4 px-6 py-3 text-right">
                   <SortHeader label="Saldo" sortBy="saldo" />
                 </th>
-                <th className="px-6 py-3 text-center text-sm font-semibold text-foreground">
+                <th className="w-1/5 px-6 py-3 text-center text-sm font-semibold text-foreground">
                   Estado
                 </th>
               </tr>
@@ -113,24 +113,24 @@ export function CuentaCorrienteProveedoresClient({ proveedores }: { proveedores:
                     onClick={() => window.location.href = `/proveedores/${proveedor.id}`}
                   >
                     {/* Nombre */}
-                    <td className="px-6 py-4">
+                    <td className="w-2/5 px-6 py-4">
                       <p className="font-medium text-foreground hover:text-blue-600">
                         {proveedor.nombre}
                       </p>
                       {proveedor.telefono && (
-                        <p className="text-sm text-muted-foreground mt-1">
+                        <p className="text-sm text-muted-foreground mt-1 md:hidden">
                           {proveedor.telefono}
                         </p>
                       )}
                     </td>
 
                     {/* Teléfono */}
-                    <td className="px-6 py-4 text-sm text-muted-foreground hidden md:table-cell">
+                    <td className="w-1/5 px-6 py-4 text-sm text-muted-foreground hidden md:table-cell">
                       {proveedor.telefono ?? "—"}
                     </td>
 
                     {/* Saldo */}
-                    <td className="px-6 py-4 text-right">
+                    <td className="w-1/4 px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <span className={cn(
                           "font-bold font-mono tabular-nums text-lg",
@@ -147,7 +147,7 @@ export function CuentaCorrienteProveedoresClient({ proveedores }: { proveedores:
                     </td>
 
                     {/* Estado */}
-                    <td className="px-6 py-4">
+                    <td className="w-1/5 px-6 py-4">
                       <div className="flex items-center justify-center">
                         <span className={cn(
                           "px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap",

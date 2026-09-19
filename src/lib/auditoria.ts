@@ -23,14 +23,19 @@ export type AccionAuditoria =
   | "IMPERSONACION_INICIO"
   | "IMPERSONACION_FIN"
   | "PRODUCTO_PRECIO_CAMBIO"
+  | "COMPRA_CREA"
   | "COMPRA_CONFIRMA"
   | "COMPRA_ANULA"
   | "DEVOLUCION_COMPRA"
+  | "VENTA_CREA"
   | "VENTA_CONFIRMA"
   | "VENTA_ANULA"
   | "DEVOLUCION_VENTA"
   | "STOCK_AJUSTE"
-  | "COBRO_REGISTRA";
+  | "COBRO_REGISTRA"
+  | "PAGO_PROVEEDOR_REGISTRA"
+  | "CAJA_CIERRE"
+  | "COTIZACION_DOLAR_ACTUALIZA";
 
 export async function auditar(params: {
   accion: AccionAuditoria;

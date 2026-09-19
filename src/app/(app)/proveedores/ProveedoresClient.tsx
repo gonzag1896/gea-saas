@@ -1,75 +1,95 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Plus, Pencil, Trash2, RotateCcw, Wallet } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { DataTable } from "@/components/ui/DataTable";
-import { Modal } from "@/components/ui/Modal";
-import { FormField } from "@/components/ui/FormField";
+import { ActivoBadge } from "@/components/ui/Badge";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
-type Proveedor = { id: string; nombre: string; rut: string | null; telefono: string | null; email: string | null };
+type Proveedor = { id: string; nombre: string; rut: string | null; telefono: string | null; email: string | null; activo: boolean };
 
-export function ProveedoresClient({ proveedoresIniciales, puedeModificar }: { proveedoresIniciales: Proveedor[]; puedeModificar: boolean }) {
+export function ProveedoresClient({
+  proveedoresIniciales,
+  puedeCrear,
+  puedeEditar,
+  puedeEliminar,
+}: {
+  proveedoresIniciales: Proveedor[];
+  puedeCrear: boolean;
+  puedeEditar: boolean;
+  puedeEliminar: boolean;
+}) {
   const router = useRouter();
-  const [form, setForm] = useState({ nombre: "", rut: "", telefono: "", email: "" });
   const [error, setError] = useState<string | null>(null);
-  const [proveedorEnEdicion, setProveedorEnEdicion] = useState<Proveedor | null>(null);
-  const [edicion, setEdicion] = useState({ nombre: "", telefono: "", email: "" });
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  const [aEliminar, setAEliminar] = useState<Proveedor | null>(null);
+  const [eliminando, setEliminando] = useState(false);
 
-  async function crear(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    const res = await fetch("/api/proveedores", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nombre: form.nombre, rut: form.rut || undefined, telefono: form.telefono || undefined, email: form.email || undefined }),
+  useEffect(() => {
+    setOverrides((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const p of proveedoresIniciales) {
+        if (next[p.id] !== undefined && next[p.id] === p.activo) {
+          delete next[p.id];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
     });
-    const data = await res.json();
-    if (!res.ok) return setError(data.error);
-    setForm({ nombre: "", rut: "", telefono: "", email: "" });
+  }, [proveedoresIniciales]);
+
+  const proveedores = proveedoresIniciales.map((p) => (overrides[p.id] !== undefined ? { ...p, activo: overrides[p.id] } : p));
+
+  async function reactivar(proveedor: Proveedor) {
+    setOverrides((o) => ({ ...o, [proveedor.id]: true }));
+    const res = await fetch(`/api/proveedores/${proveedor.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ activo: true }),
+    });
+    if (!res.ok) setError((await res.json()).error);
     router.refresh();
   }
 
-  function abrirEdicion(proveedor: Proveedor) {
-    setProveedorEnEdicion(proveedor);
-    setEdicion({ nombre: proveedor.nombre, telefono: proveedor.telefono ?? "", email: proveedor.email ?? "" });
-  }
-
-  async function confirmarEdicion(e: React.FormEvent) {
-    e.preventDefault();
-    if (!proveedorEnEdicion) return;
-    const res = await fetch(`/api/proveedores/${proveedorEnEdicion.id}`, {
+  async function confirmarEliminar() {
+    if (!aEliminar) return;
+    setEliminando(true);
+    const res = await fetch(`/api/proveedores/${aEliminar.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nombre: edicion.nombre, telefono: edicion.telefono || undefined, email: edicion.email || undefined }),
+      body: JSON.stringify({ activo: false }),
     });
-    if (!res.ok) setError((await res.json()).error);
-    setProveedorEnEdicion(null);
+    setEliminando(false);
+    if (!res.ok) {
+      setError((await res.json()).error);
+      setAEliminar(null);
+      return;
+    }
+    setOverrides((o) => ({ ...o, [aEliminar.id]: false }));
+    setAEliminar(null);
     router.refresh();
   }
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Proveedores" />
-
-      <Card>
-        <form onSubmit={crear} className="flex flex-wrap gap-3">
-          <Input value={form.nombre} onChange={(e) => setForm({ ...form, nombre: e.target.value })} placeholder="Nombre" required className="max-w-xs" />
-          <Input value={form.rut} onChange={(e) => setForm({ ...form, rut: e.target.value })} placeholder="RUT" className="max-w-[160px]" />
-          <Input value={form.telefono} onChange={(e) => setForm({ ...form, telefono: e.target.value })} placeholder="Teléfono" className="max-w-[160px]" />
-          <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="Email" className="max-w-xs" />
-          <Button type="submit">Agregar</Button>
-        </form>
-      </Card>
+      <PageHeader
+        title="Proveedores"
+        action={puedeCrear && (
+          <Button onClick={() => router.push("/proveedores/nuevo")}>
+            <Plus className="h-4 w-4" /> Nuevo proveedor
+          </Button>
+        )}
+      />
 
       {error && <Alert>{error}</Alert>}
 
       <DataTable
-        data={proveedoresIniciales}
+        data={proveedores}
         rowKey={(p) => p.id}
         searchValue={(p) => `${p.nombre} ${p.rut ?? ""} ${p.email ?? ""}`}
         searchPlaceholder="Buscar proveedor…"
@@ -79,29 +99,47 @@ export function ProveedoresClient({ proveedoresIniciales, puedeModificar }: { pr
           { key: "rut", header: "RUT", sortValue: (p) => p.rut ?? "", render: (p) => p.rut ?? "—" },
           { key: "telefono", header: "Teléfono", render: (p) => p.telefono ?? "—" },
           { key: "email", header: "Email", render: (p) => p.email ?? "—" },
-          ...(puedeModificar
-            ? [{ key: "acciones", header: "", render: (p: Proveedor) => <Button variant="secondary" size="sm" onClick={() => abrirEdicion(p)}>Editar</Button> }]
-            : []),
+          { key: "estado", header: "Estado", sortValue: (p) => Number(p.activo), render: (p) => <ActivoBadge activo={p.activo} /> },
+          {
+            key: "acciones",
+            header: "",
+            headClassName: "w-0",
+            render: (p) => (
+              <div className="flex items-center justify-end gap-1">
+                <Button variant="icon" className="h-8 w-8" aria-label={`Cuenta corriente de ${p.nombre}`} onClick={() => router.push(`/proveedores/${p.id}`)}>
+                  <Wallet className="h-4 w-4" />
+                </Button>
+                {puedeEditar && (
+                  <Button variant="icon" className="h-8 w-8" aria-label={`Editar ${p.nombre}`} onClick={() => router.push(`/proveedores/${p.id}/editar`)}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                )}
+                {puedeEliminar && p.activo && (
+                  <Button variant="icon" className="h-8 w-8 hover:text-danger" aria-label={`Desactivar ${p.nombre}`} onClick={() => setAEliminar(p)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+                {puedeEliminar && !p.activo && (
+                  <Button variant="icon" className="h-8 w-8 hover:text-success" aria-label={`Reactivar ${p.nombre}`} onClick={() => reactivar(p)}>
+                    <RotateCcw className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ),
+          },
         ]}
       />
 
-      <Modal open={proveedorEnEdicion !== null} onClose={() => setProveedorEnEdicion(null)} title="Editar proveedor">
-        <form onSubmit={confirmarEdicion} className="flex flex-col gap-3">
-          <FormField label="Nombre">
-            <Input value={edicion.nombre} onChange={(e) => setEdicion({ ...edicion, nombre: e.target.value })} required autoFocus />
-          </FormField>
-          <FormField label="Teléfono">
-            <Input value={edicion.telefono} onChange={(e) => setEdicion({ ...edicion, telefono: e.target.value })} />
-          </FormField>
-          <FormField label="Email">
-            <Input value={edicion.email} onChange={(e) => setEdicion({ ...edicion, email: e.target.value })} />
-          </FormField>
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" onClick={() => setProveedorEnEdicion(null)}>Cancelar</Button>
-            <Button type="submit">Guardar</Button>
-          </div>
-        </form>
-      </Modal>
+      <ConfirmDialog
+        open={aEliminar !== null}
+        title="Desactivar proveedor"
+        message={aEliminar ? `¿Desactivar "${aEliminar.nombre}"? Vas a poder reactivarlo cuando quieras.` : ""}
+        confirmLabel="Desactivar"
+        variant="danger"
+        loading={eliminando}
+        onConfirm={confirmarEliminar}
+        onCancel={() => setAEliminar(null)}
+      />
     </div>
   );
 }

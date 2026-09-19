@@ -34,18 +34,18 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} className="flex max-w-xs flex-col gap-4">
+    <form onSubmit={onSubmit} className="flex flex-col gap-4">
       <FormField label="Email">
-        <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+        <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus placeholder="tu@ferreteria.com" />
       </FormField>
       <FormField label="Contraseña">
-        <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+        <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="••••••••" />
       </FormField>
       {error && <Alert>{error}</Alert>}
-      <Button type="submit" loading={enviando}>
+      <Button type="submit" loading={enviando} className="mt-1 w-full justify-center">
         {enviando ? "Ingresando…" : "Ingresar"}
       </Button>
-      <a href="/recuperar-password" className="text-sm text-primary underline underline-offset-2">Olvidé mi contraseña</a>
+      <a href="/recuperar-password" className="text-center text-sm text-primary underline underline-offset-2">Olvidé mi contraseña</a>
     </form>
   );
 }

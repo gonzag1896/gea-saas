@@ -76,6 +76,8 @@ model Usuario {
   movimientosCC      CuentaCliente[]    @relation("CuentaClienteRegistradoPor")
   devolucionesCompra DevolucionCompra[] @relation("DevolucionCompraRegistradoPor")
   devolucionesVenta  DevolucionVenta[]  @relation("DevolucionVentaRegistradoPor")
+  cierresCaja        CierreCaja[]       @relation("CierreCajaRegistradoPor")
+  movimientosCP      CuentaProveedor[]  @relation("CuentaProveedorRegistradoPor")
 }
 
 model Account {
@@ -148,6 +150,15 @@ model Ferreteria {
   // Habilita/deshabilita módulos futuros por ferretería sin migraciones.
   moduleFlags Json?
 
+  // Tipo de cambio configurado desde /configuracion — precarga el campo
+  // "cotización" de Ventas/Compras en dólares, pero cada operación puede
+  // pisarlo puntualmente (ver Venta.cotizacion/Compra.cotizacion). No es
+  // la cotización "del día" automática: hay que guardarla a mano o
+  // consultarla contra el BCU y confirmar, así nunca cambia un total ya
+  // calculado por sorpresa.
+  cotizacionDolar          Decimal?  @db.Decimal(10, 4)
+  cotizacionDolarFecha     DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -160,6 +171,8 @@ model Ferreteria {
   compras     Compra[]
   ventas      Venta[]
   auditLogs   AuditLog[]
+  cierresCaja CierreCaja[]
+  listasPrecio ListaPrecio[]
 
   @@index([estado])
 }
@@ -257,6 +270,10 @@ model Producto {
   ferreteriaId String
 
   codigo         String
+  // Código de barras del producto (EAN/UPC u otro) — opcional, para el
+  // escaneo rápido en Ventas/Compras. Distinto de `codigo` (el código
+  // interno de catálogo, obligatorio y el que ya se usa en toda la app).
+  codigoBarras   String?
   descripcion    String
   subCategoriaId String
   marcaId        String
@@ -287,9 +304,11 @@ model Producto {
   compraDetalles   CompraDetalle[]
   ventaDetalles    VentaDetalle[]
   movimientosStock MovimientoStock[]
+  preciosPorLista  PrecioProducto[]
 
   @@unique([id, ferreteriaId])
   @@unique([ferreteriaId, codigo])
+  @@unique([ferreteriaId, codigoBarras])
   @@index([ferreteriaId, subCategoriaId])
   @@index([ferreteriaId, marcaId])
 }
@@ -305,15 +324,63 @@ model Cliente {
   telefono     String?
   activo       Boolean @default(true)
 
+  // Null = precio base (Producto.precioVenta) — asignar una lista acá es
+  // lo que hace que Ventas le sugiera el precio de esa lista en vez del
+  // base al elegir un producto para este cliente. Sigue siendo editable
+  // a mano en la línea, esto solo cambia el valor sugerido de partida.
+  listaPrecioId String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   ferreteria    Ferreteria      @relation(fields: [ferreteriaId], references: [id], onDelete: Cascade)
+  listaPrecio   ListaPrecio?    @relation(fields: [listaPrecioId, ferreteriaId], references: [id, ferreteriaId])
   ventas        Venta[]
   cuentaCliente CuentaCliente[]
 
   @@unique([id, ferreteriaId])
   @@index([ferreteriaId])
+  @@index([ferreteriaId, listaPrecioId])
+}
+
+// Lista de precios (ej. "Mayorista") — un producto puede tener un precio
+// distinto por lista vía PrecioProducto; si no tiene entrada ahí, se usa
+// Producto.precioVenta (la lista "base" no es una fila, es la ausencia
+// de override). Un cliente asignado a una lista sin overrides cargados
+// simplemente ve los precios base en todo, como si no tuviera lista.
+model ListaPrecio {
+  id           String  @id @default(cuid())
+  ferreteriaId String
+  nombre       String
+  activo       Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ferreteria Ferreteria       @relation(fields: [ferreteriaId], references: [id], onDelete: Cascade)
+  precios    PrecioProducto[]
+  clientes   Cliente[]
+
+  @@unique([id, ferreteriaId])
+  @@unique([ferreteriaId, nombre])
+}
+
+model PrecioProducto {
+  id            String @id @default(cuid())
+  ferreteriaId  String
+  listaPrecioId String
+  productoId    String
+
+  precio Decimal @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  listaPrecio ListaPrecio @relation(fields: [listaPrecioId, ferreteriaId], references: [id, ferreteriaId], onDelete: Cascade)
+  producto    Producto    @relation(fields: [productoId, ferreteriaId], references: [id, ferreteriaId], onDelete: Cascade)
+
+  @@unique([id, ferreteriaId])
+  @@unique([ferreteriaId, listaPrecioId, productoId])
 }
 
 model Proveedor {
@@ -331,8 +398,9 @@ model Proveedor {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  ferreteria Ferreteria @relation(fields: [ferreteriaId], references: [id], onDelete: Cascade)
-  compras    Compra[]
+  ferreteria      Ferreteria        @relation(fields: [ferreteriaId], references: [id], onDelete: Cascade)
+  compras         Compra[]
+  cuentaProveedor CuentaProveedor[]
 
   @@unique([id, ferreteriaId])
   @@index([ferreteriaId])
@@ -364,6 +432,10 @@ model Compra {
   numeroFactura String?
   facturaPdfUrl String?
   estado        EstadoOperacion @default(PENDIENTE)
+  // CONTADO (default) no genera deuda; CREDITO abre un Debe en la cuenta
+  // corriente del proveedor al confirmar la compra — espejo de lo que
+  // Venta.medioPago hace con la cuenta corriente del cliente.
+  medioPago     MedioPago       @default(CONTADO)
   observaciones String?
 
   subtotal Decimal @default(0) @db.Decimal(12, 2)
@@ -399,6 +471,9 @@ model CompraDetalle {
   // CHECK (cantidad > 0) — migración manual.
   cantidad      Int
   costoUnitario Decimal @db.Decimal(12, 2)
+  // Puntos porcentuales (0-100), no un monto en $ — igual criterio que
+  // VentaDetalle.descuento.
+  descuento     Decimal @default(0) @db.Decimal(5, 2)
   tipoIva       TipoIva @default(EXENTO)
   subtotal      Decimal @db.Decimal(12, 2)
 
@@ -480,8 +555,10 @@ model VentaDetalle {
   ventaId      String
   productoId   String
 
-  precio    Decimal @db.Decimal(12, 2)
-  descuento Decimal @default(0) @db.Decimal(12, 2)
+  precio Decimal @db.Decimal(12, 2)
+  // Puntos porcentuales (0-100), no un monto en $ — se aplica sobre
+  // precio*cantidad al calcular `total`.
+  descuento Decimal @default(0) @db.Decimal(5, 2)
   // CHECK (cantidad > 0), CHECK (cantidadDevuelta <= cantidad) — migración manual.
   cantidad         Int
   cantidadDevuelta Int     @default(0)
@@ -588,6 +665,12 @@ model CuentaCliente {
   origenTipo OrigenCuentaCliente
   origenId   String?
   referencia String?
+  // Solo tiene sentido (y solo se completa) en un COBRO — CONTADO o
+  // TRANSFERENCIA, nunca CREDITO. Null en todo lo demás (ventas a
+  // crédito, devoluciones) y también en cobros de antes de este campo.
+  // El Cierre de Caja del día solo suma los COBRO en CONTADO: son los
+  // únicos que efectivamente entran como billete a la caja física.
+  medioPago  MedioPago?
 
   registradoPorUsuarioId String?
   createdAt              DateTime @default(now())
@@ -597,6 +680,73 @@ model CuentaCliente {
 
   @@unique([id, ferreteriaId])
   @@index([ferreteriaId, clienteId, fecha])
+}
+
+enum OrigenCuentaProveedor {
+  COMPRA_CREDITO
+  PAGO
+  DEVOLUCION_COMPRA
+  ANULACION_COMPRA_CREDITO
+}
+
+// Espejo exacto de CuentaCliente pero del otro lado del mostrador: acá el
+// Debe es lo que le debemos al proveedor (compra a crédito) y el Haber lo
+// que le pagamos. Mismo criterio append-only: ninguna operación hace
+// UPDATE/DELETE, una reversión es una fila nueva de signo contrario.
+model CuentaProveedor {
+  id           String @id @default(cuid())
+  ferreteriaId String
+  proveedorId  String
+
+  fecha DateTime @db.Date
+  debe  Decimal  @default(0) @db.Decimal(12, 2)
+  haber Decimal  @default(0) @db.Decimal(12, 2)
+
+  origenTipo OrigenCuentaProveedor
+  origenId   String?
+  referencia String?
+  medioPago  MedioPago?
+
+  registradoPorUsuarioId String?
+  createdAt              DateTime @default(now())
+
+  proveedor     Proveedor @relation(fields: [proveedorId, ferreteriaId], references: [id, ferreteriaId])
+  registradoPor Usuario?  @relation("CuentaProveedorRegistradoPor", fields: [registradoPorUsuarioId], references: [id])
+
+  @@unique([id, ferreteriaId])
+  @@index([ferreteriaId, proveedorId, fecha])
+}
+
+// Cierre de Caja: una foto del día — cuánto "debería" haber en la caja
+// según el sistema (ventas Contado confirmadas + cobros en Contado) contra
+// lo que el cajero contó físicamente. La diferencia queda guardada para
+// siempre, no se recalcula después — si una venta de ese día se anula
+// más tarde, el cierre ya cerrado no se toca (mismo criterio de
+// trazabilidad append-only que el resto del sistema).
+model CierreCaja {
+  id           String   @id @default(cuid())
+  ferreteriaId String
+  fecha        DateTime @db.Date
+
+  totalVentasContado Decimal @db.Decimal(12, 2)
+  totalCobrosContado Decimal @db.Decimal(12, 2)
+  totalEsperado      Decimal @db.Decimal(12, 2)
+  totalContado       Decimal @db.Decimal(12, 2)
+  diferencia         Decimal @db.Decimal(12, 2)
+  observaciones      String?
+
+  registradoPorUsuarioId String?
+  createdAt              DateTime @default(now())
+
+  ferreteria    Ferreteria @relation(fields: [ferreteriaId], references: [id], onDelete: Cascade)
+  registradoPor Usuario?   @relation("CierreCajaRegistradoPor", fields: [registradoPorUsuarioId], references: [id])
+
+  // Un cierre por día por ferretería — cerrar la caja dos veces el mismo
+  // día no tiene sentido en un negocio de un solo turno (si más adelante
+  // hace falta multi-turno, es un campo "turno" más en esta unique, no un
+  // rediseño).
+  @@unique([ferreteriaId, fecha])
+  @@index([ferreteriaId, fecha])
 }
 
 // ============================================================

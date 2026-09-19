@@ -5,7 +5,6 @@ import { crearFerreteriaConUsuario } from "@/lib/test-fixtures";
 vi.mock("@/lib/auth", () => ({ auth: vi.fn() }));
 import { auth } from "@/lib/auth";
 import { POST } from "./route";
-import { POST as confirmar } from "./[id]/confirmar/route";
 import { POST as anular } from "./[id]/anular/route";
 
 const mockAuth = auth as unknown as ReturnType<typeof vi.fn>;
@@ -70,14 +69,12 @@ describe("permisos por rol — /api/compras", () => {
     expect(res.status).toBe(403);
   });
 
-  it("Depósito puede crear y confirmar, pero no anular", async () => {
+  it("Depósito puede crear (queda confirmada de una), pero no anular", async () => {
     sesionDe(deposito.id, ferreteria.id, "DEPOSITO");
     const resCrear = await POST(cuerpoCompra());
     expect(resCrear.status).toBe(201);
     const { compra } = await resCrear.json();
-
-    const resConfirmar = await confirmar(new Request("http://test", { method: "POST" }), { params: { id: compra.id } });
-    expect(resConfirmar.status).toBe(200);
+    expect(compra.estado).toBe("CONFIRMADO");
 
     const resAnular = await anular(
       new Request("http://test", { method: "POST", body: JSON.stringify({ motivo: "test" }) }),
@@ -86,12 +83,12 @@ describe("permisos por rol — /api/compras", () => {
     expect(resAnular.status).toBe(403);
   });
 
-  it("Dueño puede crear, confirmar y anular", async () => {
+  it("Dueño puede crear (queda confirmada de una) y anular", async () => {
     sesionDe(dueno.id, ferreteria.id, "DUENO");
     const resCrear = await POST(cuerpoCompra());
     const { compra } = await resCrear.json();
+    expect(compra.estado).toBe("CONFIRMADO");
 
-    await confirmar(new Request("http://test", { method: "POST" }), { params: { id: compra.id } });
     const resAnular = await anular(
       new Request("http://test", { method: "POST", body: JSON.stringify({ motivo: "test" }) }),
       { params: { id: compra.id } },

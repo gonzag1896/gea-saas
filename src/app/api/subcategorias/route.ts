@@ -37,6 +37,6 @@ export async function POST(req: Request) {
     });
     return NextResponse.json({ subCategoria }, { status: 201 });
   } catch (error) {
-    return manejarErrorPrisma(error, "Ya existe una sub categoría con ese nombre en esa categoría.");
+    return manejarErrorPrisma(error, "Ya existe una familia con ese nombre en esa categoría.");
   }
 }

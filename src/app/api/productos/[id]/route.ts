@@ -46,7 +46,14 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (contexto.soporte) return NextResponse.json({ error: "No autorizado." }, { status: 403 });
 
   const { ferreteriaId } = contexto;
-  const dataComun = { ...(parsedGeneral?.data ?? {}), ...(tieneCambioActivo ? { activo: activo as boolean } : {}) };
+  const dataComun = {
+    ...(parsedGeneral?.data ?? {}),
+    // Mismo criterio que en el alta: "" se guarda como NULL, no como
+    // string vacío, para no chocar contra el UNIQUE si dos productos
+    // limpian el código de barras.
+    ...(parsedGeneral?.data.codigoBarras !== undefined ? { codigoBarras: parsedGeneral.data.codigoBarras || null } : {}),
+    ...(tieneCambioActivo ? { activo: activo as boolean } : {}),
+  };
 
   try {
     if (tieneCambioPrecio) {
@@ -83,6 +90,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     if (error instanceof Error && "code" in error && error.code === "P2025") {
       return NextResponse.json({ error: "Producto no encontrado." }, { status: 404 });
     }
-    return manejarErrorPrisma(error, "Ya existe un producto con ese código.");
+    return manejarErrorPrisma(error, (target) =>
+      target.includes("codigoBarras") ? "Ya existe un producto con ese código de barras." : "Ya existe un producto con ese código.");
   }
 }

@@ -1,13 +1,95 @@
 import { prisma } from "@/lib/db";
+import type { crearVentaSchema } from "@/lib/schemas-ventas";
 import { aplicarMovimientoStock } from "@/lib/stock";
 import { auditar } from "@/lib/auditoria";
 import { EntidadNoEncontradaError, EstadoInvalidoError, CantidadInvalidaError } from "@/lib/errores-dominio";
+import type { z } from "zod";
 
-// AltaMovimientoVenta del sistema original: salida de stock por línea (que
-// puede rechazar la confirmación entera si no hay stock — decisión
-// pendiente #1 del informe, cerrada: se bloquea vender sin stock) y, si el
-// medio de pago es Crédito, un asiento Debe en la cuenta corriente del
-// cliente por el total de la venta.
+// Alta y confirmación en un solo paso: el negocio pidió sacar el estado
+// Pendiente del flujo normal (una venta se carga una sola vez, no se
+// registra y después se vuelve a confirmar aparte — eso era doble
+// trabajo). Una venta nunca se bloquea por falta de stock: aplicarMovimientoStock
+// permite que quede negativo para el origen VENTA (se corrige después con
+// una compra o un ajuste), así que esta transacción no puede fallar por eso.
+export async function crearVentaConfirmada(
+  ferreteriaId: string,
+  usuarioId: string,
+  datos: z.infer<typeof crearVentaSchema>,
+) {
+  const lineas = datos.detalle.map((l) => ({ ...l, total: l.precio * l.cantidad * (1 - l.descuento / 100) }));
+  const subtotal = lineas.reduce((acc, l) => acc + l.total, 0);
+  const iva = datos.tipoIva === "TOTAL" ? subtotal * 0.22 : 0;
+  const fecha = new Date(datos.fecha);
+
+  const venta = await prisma.$transaction(async (tx) => {
+    const venta = await tx.venta.create({
+      data: {
+        ferreteriaId,
+        clienteId: datos.clienteId,
+        fecha,
+        tipoIva: datos.tipoIva,
+        medioPago: datos.medioPago,
+        entrega: datos.entrega,
+        registradoPorUsuarioId: usuarioId,
+        estado: "CONFIRMADO",
+        subtotal,
+        iva,
+        total: subtotal + iva,
+        detalle: {
+          create: lineas.map((l) => ({
+            productoId: l.productoId,
+            cantidad: l.cantidad,
+            precio: l.precio,
+            descuento: l.descuento,
+            total: l.total,
+            totalVigente: l.total,
+          })),
+        },
+      },
+      include: { detalle: true },
+    });
+
+    for (const linea of venta.detalle) {
+      // Salida sin guard de stock — ver aplicarMovimientoStock.
+      await aplicarMovimientoStock(tx, {
+        ferreteriaId,
+        productoId: linea.productoId,
+        tipo: "SALIDA",
+        cantidad: linea.cantidad,
+        fecha: venta.fecha,
+        origenTipo: "VENTA",
+        origenId: venta.id,
+        registradoPorUsuarioId: usuarioId,
+      });
+    }
+
+    if (venta.medioPago === "CREDITO") {
+      await tx.cuentaCliente.create({
+        data: {
+          ferreteriaId,
+          clienteId: venta.clienteId,
+          fecha: venta.fecha,
+          debe: venta.total,
+          haber: 0,
+          origenTipo: "VENTA_CREDITO",
+          origenId: venta.id,
+          registradoPorUsuarioId: usuarioId,
+        },
+      });
+    }
+
+    return venta;
+  });
+
+  await auditar({ accion: "VENTA_CREA", usuarioId, ferreteriaId, entidad: "Venta", entidadId: venta.id });
+
+  return venta;
+}
+
+// AltaMovimientoVenta del sistema original: salida de stock por línea (sin
+// bloquear por falta de stock, ver aplicarMovimientoStock) y, si el medio
+// de pago es Crédito, un asiento Debe en la cuenta corriente del cliente
+// por el total de la venta.
 export async function confirmarVenta(ferreteriaId: string, ventaId: string, usuarioId: string) {
   await prisma.$transaction(async (tx) => {
     const { count } = await tx.venta.updateMany({
@@ -27,8 +109,7 @@ export async function confirmarVenta(ferreteriaId: string, ventaId: string, usua
     });
 
     for (const linea of venta.detalle) {
-      // Puede tirar StockInsuficienteError, lo que revierte toda la
-      // transacción — incluida la propia confirmación de arriba.
+      // Salida sin guard de stock — ver aplicarMovimientoStock.
       await aplicarMovimientoStock(tx, {
         ferreteriaId,
         productoId: linea.productoId,

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requirePermiso } from "@/lib/tenant";
 import { crearCompraSchema } from "@/lib/schemas-compras";
+import { crearCompraConfirmada } from "@/lib/compras";
+import { manejarErrorNegocio } from "@/lib/errores-negocio";
 
 export async function GET() {
   const resultado = await requirePermiso("compras", "ver");
@@ -15,6 +17,10 @@ export async function GET() {
   return NextResponse.json({ compras });
 }
 
+// La compra se crea directamente CONFIRMADA — sin paso intermedio de
+// Pendiente — para que cargarla sea un solo trámite, no dos. Ver
+// crearCompraConfirmada() en @/lib/compras para el detalle de la
+// transacción (stock + costo del producto incluidos).
 export async function POST(req: Request) {
   const resultado = await requirePermiso("compras", "crear");
   if (!resultado.ok) return NextResponse.json({ error: "No autorizado." }, { status: resultado.status });
@@ -23,40 +29,10 @@ export async function POST(req: Request) {
   const parsed = crearCompraSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Datos inválidos." }, { status: 400 });
 
-  const { ferreteriaId, usuarioId } = resultado.contexto;
-  const { detalle, ...datos } = parsed.data;
-
-  const subtotal = detalle.reduce((acc, l) => acc + l.cantidad * l.costoUnitario, 0);
-  const iva = detalle.reduce((acc, l) => acc + (l.tipoIva === "TOTAL" ? l.cantidad * l.costoUnitario * 0.22 : 0), 0);
-
-  const compra = await prisma.compra.create({
-    data: {
-      ferreteriaId,
-      proveedorId: datos.proveedorId,
-      fecha: new Date(datos.fecha),
-      numeroFactura: datos.numeroFactura || undefined,
-      facturaPdfUrl: datos.facturaPdfUrl || undefined,
-      observaciones: datos.observaciones,
-      registradoPorUsuarioId: usuarioId,
-      subtotal,
-      iva,
-      total: subtotal + iva,
-      // ferreteriaId no se repite en cada línea: al anidar el create bajo
-      // la relación "compra" (FK compuesta compraId+ferreteriaId), Prisma
-      // lo toma del padre solo — pasarlo acá de nuevo es un error de tipos,
-      // no una redundancia inofensiva.
-      detalle: {
-        create: detalle.map((l) => ({
-          productoId: l.productoId,
-          cantidad: l.cantidad,
-          costoUnitario: l.costoUnitario,
-          tipoIva: l.tipoIva,
-          subtotal: l.cantidad * l.costoUnitario,
-        })),
-      },
-    },
-    include: { detalle: true },
-  });
-
-  return NextResponse.json({ compra }, { status: 201 });
+  try {
+    const compra = await crearCompraConfirmada(resultado.contexto.ferreteriaId, resultado.contexto.usuarioId, parsed.data);
+    return NextResponse.json({ compra }, { status: 201 });
+  } catch (error) {
+    return manejarErrorNegocio(error);
+  }
 }

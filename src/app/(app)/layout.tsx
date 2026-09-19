@@ -1,24 +1,20 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-import { sesionSigueValida } from "@/lib/validar-sesion";
+import { obtenerSesionValidada } from "@/lib/tenant";
 import { Sidebar } from "./sidebar";
 import { Header } from "./header";
+import { SidebarMarginAdjuster } from "./sidebar-margin-adjuster";
 
 // Guardia de todo lo que cuelga de (app): sin sesión, con una sesión vieja
 // (contraseña cambiada o membresía revocada después de emitido el token),
 // o sin una ferretería activa todavía, no se entra al contenido.
+//
+// Usa el mismo obtenerSesionValidada() cacheado por request que
+// obtenerContextoTenant() — cada page.tsx de acá abajo lo vuelve a llamar,
+// y sin el cache() de por medio eso eran 2 consultas de sesión de más en
+// cada navegación.
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const session = await auth();
+  const session = await obtenerSesionValidada();
   if (!session?.user) redirect("/login");
-
-  const valida = await sesionSigueValida({
-    id: session.user.id,
-    emitidoEn: session.user.emitidoEn,
-    ferreteriaId: session.user.ferreteriaId,
-    rol: session.user.rol,
-    isSuperAdmin: session.user.isSuperAdmin,
-  });
-  if (!valida) redirect("/login");
 
   // Un Super Admin puro (sin ferretería prestada en modo soporte) no
   // necesita elegir ninguna — su panel es de plataforma, no de negocio
@@ -31,7 +27,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex h-screen bg-background">
       <Sidebar rol={session.user.rol} />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <SidebarMarginAdjuster>
         <Header
           email={session.user.email ?? ""}
           ferreteriaId={session.user.ferreteriaId}
@@ -41,7 +37,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           isSuperAdmin={session.user.isSuperAdmin}
         />
         <main className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-8">{children}</main>
-      </div>
+      </SidebarMarginAdjuster>
     </div>
   );
 }

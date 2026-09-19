@@ -24,6 +24,48 @@ export async function totalComprasDelMes(ferreteriaId: string): Promise<number> 
   return Number(resultado._sum.total ?? 0);
 }
 
+export async function totalVentasHoy(ferreteriaId: string): Promise<number> {
+  const hoy = new Date();
+  const inicioHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
+  const resultado = await prisma.venta.aggregate({
+    where: { ferreteriaId, estado: "CONFIRMADO", fecha: { gte: inicioHoy } },
+    _sum: { total: true },
+  });
+  return Number(resultado._sum.total ?? 0);
+}
+
+// Suma solo los saldos positivos (lo que cada cliente debe) — un cliente
+// con saldo a favor (pagó de más) no puede "compensar" lo que debe otro,
+// así que no alcanza con un solo aggregate neto de toda la cartera.
+export async function totalPorCobrar(ferreteriaId: string): Promise<number> {
+  const porCliente = await prisma.cuentaCliente.groupBy({
+    by: ["clienteId"],
+    where: { ferreteriaId },
+    _sum: { debe: true, haber: true },
+  });
+  return porCliente.reduce((acc, c) => {
+    const saldo = Number(c._sum.debe ?? 0) - Number(c._sum.haber ?? 0);
+    return saldo > 0 ? acc + saldo : acc;
+  }, 0);
+}
+
+export type ProductoStockBajo = { id: string; codigo: string; descripcion: string; stockActual: number; stockMinimo: number };
+
+// Trae solo los productos activos (catálogo de una ferretería no pasa de
+// unos cientos de ítems) y filtra en memoria — Prisma no compara dos
+// columnas de la misma fila (stockActual <= stockMinimo) en un `where`
+// sin SQL crudo, y acá no hace falta.
+export async function productosStockBajo(ferreteriaId: string, limite = 5): Promise<ProductoStockBajo[]> {
+  const productos = await prisma.producto.findMany({
+    where: { ferreteriaId, activo: true },
+    select: { id: true, codigo: true, descripcion: true, stockActual: true, stockMinimo: true },
+  });
+  return productos
+    .filter((p) => p.stockActual <= p.stockMinimo)
+    .sort((a, b) => (a.stockActual - a.stockMinimo) - (b.stockActual - b.stockMinimo))
+    .slice(0, limite);
+}
+
 export type PuntoVentasDiarias = { fecha: string; total: number };
 
 export async function ventasDiarias(ferreteriaId: string, desde: Date, hasta: Date): Promise<PuntoVentasDiarias[]> {

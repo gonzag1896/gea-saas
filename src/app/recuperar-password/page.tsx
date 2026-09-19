@@ -4,6 +4,7 @@ import { useState } from "react";
 import { FormField } from "@/components/ui/FormField";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { AuthCard } from "@/components/ui/AuthCard";
 
 export default function RecuperarPasswordPage() {
   const [email, setEmail] = useState("");
@@ -25,21 +26,22 @@ export default function RecuperarPasswordPage() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col justify-center gap-6 p-10">
-      <h1 className="text-xl font-semibold text-foreground">Recuperar contraseña</h1>
+    <AuthCard title="Recuperar contraseña" description="Te enviamos instrucciones para elegir una nueva contraseña.">
       {mensaje ? (
         <p className="text-sm text-foreground">{mensaje}</p>
       ) : (
-        <form onSubmit={onSubmit} className="flex max-w-xs flex-col gap-4">
+        <form onSubmit={onSubmit} className="flex flex-col gap-4">
           <FormField label="Email">
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus placeholder="tu@ferreteria.com" />
           </FormField>
-          <Button type="submit" loading={enviando}>
+          <Button type="submit" loading={enviando} className="w-full justify-center">
             {enviando ? "Enviando…" : "Enviar instrucciones"}
           </Button>
         </form>
       )}
-      <p><a href="/login" className="text-sm text-primary underline underline-offset-2">Volver a ingresar</a></p>
-    </main>
+      <p className="mt-4 text-center text-sm">
+        <a href="/login" className="text-primary underline underline-offset-2">Volver a ingresar</a>
+      </p>
+    </AuthCard>
   );
 }

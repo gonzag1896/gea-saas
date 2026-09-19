@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { AuthCard } from "@/components/ui/AuthCard";
 import { SeleccionarFerreteriaForm } from "./SeleccionarFerreteriaForm";
 
 // A esta pantalla se llega de tres formas: un usuario con 0 o ≥2
@@ -22,11 +23,9 @@ export default async function SeleccionarFerreteriaPage() {
       orderBy: { nombre: "asc" },
     });
     return (
-      <main className="flex flex-col gap-4 p-10">
-        <h1 className="text-xl font-semibold text-foreground">Modo soporte</h1>
-        <p className="text-sm text-muted-foreground">Elegí una ferretería para entrar en modo lectura como soporte.</p>
+      <AuthCard title="Modo soporte" description="Elegí una ferretería para entrar en modo lectura como soporte.">
         <SeleccionarFerreteriaForm items={ferreterias} modoSoporte />
-      </main>
+      </AuthCard>
     );
   }
 
@@ -36,12 +35,11 @@ export default async function SeleccionarFerreteriaPage() {
   });
 
   return (
-    <main className="flex flex-col gap-4 p-10">
-      <h1 className="text-xl font-semibold text-foreground">Elegir ferretería</h1>
+    <AuthCard title="Elegir ferretería">
       <SeleccionarFerreteriaForm
         items={membresias.map((m) => ({ id: m.ferreteriaId, nombre: m.ferreteria.nombre, rol: m.rol }))}
         modoSoporte={false}
       />
-    </main>
+    </AuthCard>
   );
 }

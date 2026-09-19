@@ -1,20 +1,37 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requirePermiso } from "@/lib/tenant";
+import { tienePermiso } from "@/lib/permisos";
 import { modificarProveedorSchema } from "@/lib/schemas-catalogo";
 import { manejarErrorPrisma } from "@/lib/prisma-errors";
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
-  const resultado = await requirePermiso("proveedores", "modificar");
-  if (!resultado.ok) return NextResponse.json({ error: "No autorizado." }, { status: resultado.status });
-
   const body = await req.json().catch(() => null);
   const parsed = modificarProveedorSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Datos inválidos." }, { status: 400 });
 
+  const resultado = await requirePermiso("proveedores", "ver");
+  if (!resultado.ok) return NextResponse.json({ error: "No autorizado." }, { status: resultado.status });
+  const { contexto } = resultado;
+
+  // Activar/desactivar es la baja lógica ("eliminar" de la matriz) —
+  // permiso distinto de editar nombre/rut/teléfono/email ("modificar"),
+  // mismo criterio que ya usan Categorías/Sub Categorías/Marcas/Productos.
+  const { activo, ...resto } = parsed.data;
+  if (activo !== undefined && !tienePermiso(contexto.rol, "proveedores", "eliminar")) {
+    return NextResponse.json({ error: "No autorizado." }, { status: 403 });
+  }
+  if (Object.keys(resto).length > 0 && !tienePermiso(contexto.rol, "proveedores", "modificar")) {
+    return NextResponse.json({ error: "No autorizado." }, { status: 403 });
+  }
+  // requirePermiso("proveedores","ver") no bloquea soporte por sí solo (el
+  // bloqueo genérico es solo para acciones != "ver") — hace falta este
+  // check explícito para que Soporte no pueda escribir.
+  if (contexto.soporte) return NextResponse.json({ error: "No autorizado." }, { status: 403 });
+
   try {
     const proveedor = await prisma.proveedor.update({
-      where: { id_ferreteriaId: { id: params.id, ferreteriaId: resultado.contexto.ferreteriaId } },
+      where: { id_ferreteriaId: { id: params.id, ferreteriaId: contexto.ferreteriaId } },
       data: { ...parsed.data, rut: parsed.data.rut || undefined, email: parsed.data.email || undefined },
     });
     return NextResponse.json({ proveedor });

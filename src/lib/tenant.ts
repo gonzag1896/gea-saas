@@ -1,7 +1,37 @@
+import { cache as reactCache } from "react";
 import type { RolFerreteria } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { sesionSigueValida } from "@/lib/validar-sesion";
 import { tienePermiso, type Modulo, type Accion } from "@/lib/permisos";
+
+// Bajo Vitest (Node plano, sin la condición "react-server" que usa Next
+// para Server Components) react no exporta cache() — queda undefined. El
+// fallback identidad mantiene el comportamiento correcto en los tests
+// (sin memoizar, pero sin romper); en runtime de Next sí memoiza.
+const memoPorRequest = reactCache ?? (<T,>(fn: T): T => fn);
+
+// `auth()` ya viene deduplicado por request (Auth.js v5 lo envuelve en
+// cache() internamente), pero sesionSigueValida() no — son 2 consultas a
+// la base cada vez. Sin este cache(), layout.tsx (guardia de toda (app))
+// y el page.tsx de cada pantalla la llamaban cada uno por su cuenta: 4
+// consultas de sesión en cada navegación en vez de 2. Al no recibir
+// argumentos, React cache() lo memoiza una sola vez por request sin
+// importar cuántos Server Components lo llamen.
+export const obtenerSesionValidada = memoPorRequest(async () => {
+  const session = await auth();
+  if (!session?.user) return null;
+
+  const valida = await sesionSigueValida({
+    id: session.user.id,
+    emitidoEn: session.user.emitidoEn,
+    ferreteriaId: session.user.ferreteriaId,
+    rol: session.user.rol,
+    isSuperAdmin: session.user.isSuperAdmin,
+  });
+  if (!valida) return null;
+
+  return session;
+});
 
 export type ContextoTenant = {
   usuarioId: string;
@@ -20,17 +50,8 @@ export type ContextoTenant = {
 // distinción para decidir a qué pantalla mandar a alguien es cosa de los
 // layouts (ver src/app/(app)/layout.tsx), no de acá.
 export async function obtenerContextoTenant(): Promise<ContextoTenant | null> {
-  const session = await auth();
+  const session = await obtenerSesionValidada();
   if (!session?.user) return null;
-
-  const valida = await sesionSigueValida({
-    id: session.user.id,
-    emitidoEn: session.user.emitidoEn,
-    ferreteriaId: session.user.ferreteriaId,
-    rol: session.user.rol,
-    isSuperAdmin: session.user.isSuperAdmin,
-  });
-  if (!valida) return null;
 
   if (!session.user.ferreteriaId || !session.user.rol) return null;
 

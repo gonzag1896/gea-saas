@@ -51,6 +51,14 @@ export async function aplicarMovimientoStock(tx: TxClient, params: ParametrosMov
       where: { id_ferreteriaId: { id: params.productoId, ferreteriaId: params.ferreteriaId } },
       data: { stockActual: { increment: params.cantidad } },
     });
+  } else if (params.origenTipo === "VENTA") {
+    // Una venta nunca se bloquea por falta de stock — el negocio pidió
+    // poder vender igual y dejar el stock en negativo (se corrige después
+    // con una compra o un ajuste). Sin el guard `gte`, ni StockInsuficienteError.
+    await tx.producto.update({
+      where: { id_ferreteriaId: { id: params.productoId, ferreteriaId: params.ferreteriaId } },
+      data: { stockActual: { decrement: params.cantidad } },
+    });
   } else {
     const { count } = await tx.producto.updateMany({
       where: { id: params.productoId, ferreteriaId: params.ferreteriaId, stockActual: { gte: params.cantidad } },

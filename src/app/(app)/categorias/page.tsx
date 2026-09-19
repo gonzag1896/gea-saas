@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { obtenerContextoTenant } from "@/lib/tenant";
+import { tienePermiso } from "@/lib/permisos";
 import { CategoriasClient } from "./CategoriasClient";
 
 export default async function CategoriasPage() {
@@ -12,5 +13,12 @@ export default async function CategoriasPage() {
     orderBy: { nombre: "asc" },
   });
 
-  return <CategoriasClient categoriasIniciales={categorias} />;
+  return (
+    <CategoriasClient
+      categoriasIniciales={categorias}
+      puedeCrear={tienePermiso(contexto.rol, "productos", "crear")}
+      puedeEditar={tienePermiso(contexto.rol, "productos", "modificar")}
+      puedeEliminar={tienePermiso(contexto.rol, "productos", "eliminar")}
+    />
+  );
 }
