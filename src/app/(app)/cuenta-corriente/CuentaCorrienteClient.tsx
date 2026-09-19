@@ -87,19 +87,25 @@ export function CuentaCorrienteClient({ clientes }: { clientes: ClienteConSaldo[
       ) : (
         <div className="overflow-x-auto border border-gray-200 rounded-lg">
           <table className="w-full table-fixed">
+            <colgroup>
+              <col style={{ width: "40%" }} />
+              <col style={{ width: "20%" }} />
+              <col style={{ width: "25%" }} />
+              <col style={{ width: "15%" }} />
+            </colgroup>
             {/* Encabezados */}
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="w-2/5 px-6 py-3 text-left">
+                <th className="px-4 py-3 text-left">
                   <SortHeader label="Cliente" sortBy="nombre" />
                 </th>
-                <th className="w-1/5 px-6 py-3 text-left text-sm font-semibold text-foreground">
+                <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">
                   Teléfono
                 </th>
-                <th className="w-1/4 px-6 py-3 text-right">
+                <th className="px-4 py-3 text-right">
                   <SortHeader label="Saldo" sortBy="saldo" />
                 </th>
-                <th className="w-1/5 px-6 py-3 text-center text-sm font-semibold text-foreground">
+                <th className="px-4 py-3 text-center text-sm font-semibold text-foreground">
                   Estado
                 </th>
               </tr>
@@ -118,44 +124,39 @@ export function CuentaCorrienteClient({ clientes }: { clientes: ClienteConSaldo[
                     onClick={() => window.location.href = `/clientes/${cliente.id}`}
                   >
                     {/* Nombre */}
-                    <td className="w-2/5 px-6 py-4">
-                      <p className="font-medium text-foreground hover:text-blue-600">
+                    <td className="px-4 py-4">
+                      <p className="font-medium text-foreground hover:text-blue-600 truncate">
                         {cliente.nombre}
                       </p>
-                      {cliente.telefono && (
-                        <p className="text-sm text-muted-foreground mt-1 md:hidden">
-                          {cliente.telefono}
-                        </p>
-                      )}
                     </td>
 
                     {/* Teléfono */}
-                    <td className="w-1/5 px-6 py-4 text-sm text-muted-foreground hidden md:table-cell">
+                    <td className="px-4 py-4 text-sm text-muted-foreground">
                       {cliente.telefono ?? "—"}
                     </td>
 
                     {/* Saldo */}
-                    <td className="w-1/4 px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                    <td className="px-4 py-4 text-right">
+                      <div className="flex items-center justify-end gap-1">
                         <span className={cn(
-                          "font-bold font-mono tabular-nums text-lg",
+                          "font-bold font-mono tabular-nums",
                           esDeuda ? "text-red-600" : "text-green-600"
                         )}>
                           ${Math.abs(cliente.saldo).toFixed(2)}
                         </span>
                         {esDeuda ? (
-                          <TrendingUp className="h-5 w-5 text-red-600 flex-shrink-0" />
+                          <TrendingUp className="h-4 w-4 text-red-600 flex-shrink-0" />
                         ) : (
-                          <TrendingDown className="h-5 w-5 text-green-600 flex-shrink-0" />
+                          <TrendingDown className="h-4 w-4 text-green-600 flex-shrink-0" />
                         )}
                       </div>
                     </td>
 
                     {/* Estado */}
-                    <td className="w-1/5 px-6 py-4">
-                      <div className="flex items-center justify-center gap-2">
+                    <td className="px-4 py-4">
+                      <div className="flex items-center justify-center gap-1 flex-wrap">
                         <span className={cn(
-                          "px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap",
+                          "px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap",
                           esDeuda
                             ? "bg-red-50 text-red-700"
                             : "bg-green-50 text-green-700"
@@ -165,7 +166,7 @@ export function CuentaCorrienteClient({ clientes }: { clientes: ClienteConSaldo[
                         {esVencido && (
                           <span className="flex items-center gap-1 px-2 py-1 rounded-full bg-orange-50 text-orange-700 text-xs font-medium whitespace-nowrap">
                             <AlertCircle className="h-3 w-3" />
-                            Vencido
+                            Venc.
                           </span>
                         )}
                       </div>
