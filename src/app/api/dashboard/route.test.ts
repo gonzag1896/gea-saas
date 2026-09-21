@@ -20,17 +20,26 @@ describe("/api/dashboard — cada rol ve solo lo que la matriz le permite", () =
   let cajero: { id: string };
   let deposito: { id: string };
   let dueno: { id: string };
+  // crearFerreteriaConUsuario siempre crea una Ferretería nueva de
+  // acompañante -- acá solo se necesita el Usuario (se suma como miembro
+  // de `ferreteria` abajo), pero esas Ferreterías "sobrantes" hay que
+  // capturarlas igual para borrarlas en afterAll o quedan huérfanas para
+  // siempre en la base (bug real encontrado: 70 "Fixture ..." acumuladas).
+  let ferreteriaSobranteCajero: { id: string };
+  let ferreteriaSobranteDeposito: { id: string };
 
   beforeAll(async () => {
     ({ ferreteria, usuario: dueno } = await crearFerreteriaConUsuario(`${sufijo}-d`, "DUENO"));
-    cajero = (await crearFerreteriaConUsuario(`${sufijo}-c`, "CAJERO")).usuario;
-    deposito = (await crearFerreteriaConUsuario(`${sufijo}-x`, "DEPOSITO")).usuario;
+    ({ ferreteria: ferreteriaSobranteCajero, usuario: cajero } = await crearFerreteriaConUsuario(`${sufijo}-c`, "CAJERO"));
+    ({ ferreteria: ferreteriaSobranteDeposito, usuario: deposito } = await crearFerreteriaConUsuario(`${sufijo}-x`, "DEPOSITO"));
     await prisma.ferreteriaUsuario.create({ data: { ferreteriaId: ferreteria.id, usuarioId: cajero.id, rol: "CAJERO" } });
     await prisma.ferreteriaUsuario.create({ data: { ferreteriaId: ferreteria.id, usuarioId: deposito.id, rol: "DEPOSITO" } });
   });
 
   afterAll(async () => {
     await prisma.ferreteria.delete({ where: { id: ferreteria.id } });
+    await prisma.ferreteria.delete({ where: { id: ferreteriaSobranteCajero.id } });
+    await prisma.ferreteria.delete({ where: { id: ferreteriaSobranteDeposito.id } });
     await prisma.usuario.deleteMany({ where: { id: { in: [dueno.id, cajero.id, deposito.id] } } });
   });
 

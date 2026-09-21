@@ -28,15 +28,24 @@ describe("/api/categorias/[id] — activar/desactivar exige 'eliminar', no 'modi
   let dueno: { id: string };
   let deposito: { id: string };
   let categoriaId: string;
+  // crearFerreteriaConUsuario siempre crea una Ferretería nueva de
+  // acompañante -- acá solo se necesita el Usuario (se suma como miembro
+  // de `ferreteria` abajo), pero esa Ferretería "sobrante" hay que
+  // capturarla igual para borrarla en afterAll o queda huérfana para
+  // siempre en la base (bug real encontrado: 70 "Fixture ..." acumuladas).
+  let ferreteriaSobrante: { id: string };
 
   beforeAll(async () => {
     ({ ferreteria, usuario: dueno } = await crearFerreteriaConUsuario(`${sufijo}-d`, "DUENO"));
-    deposito = (await crearFerreteriaConUsuario(`${sufijo}-x`, "DEPOSITO")).usuario;
+    ({ ferreteria: ferreteriaSobrante, usuario: deposito } = await crearFerreteriaConUsuario(`${sufijo}-x`, "DEPOSITO"));
     await prisma.ferreteriaUsuario.create({ data: { ferreteriaId: ferreteria.id, usuarioId: deposito.id, rol: "DEPOSITO" } });
     categoriaId = (await prisma.categoria.create({ data: { ferreteriaId: ferreteria.id, nombre: "Herramientas" } })).id;
   });
 
-  afterAll(async () => borrarFixture(ferreteria.id, [dueno.id, deposito.id]));
+  afterAll(async () => {
+    await borrarFixture(ferreteria.id, [dueno.id, deposito.id]);
+    await prisma.ferreteria.delete({ where: { id: ferreteriaSobrante.id } });
+  });
 
   it("Depósito puede renombrar (tiene 'modificar')", async () => {
     sesionDe(deposito.id, ferreteria.id, "DEPOSITO");
