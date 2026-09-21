@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Printer } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
@@ -102,6 +103,9 @@ export function VentaDetalleClient({
       <div className="flex gap-3">
         {puedeConfirmar && <Button onClick={confirmar} loading={enviando}>Confirmar venta</Button>}
         {puedeAnular && <Button variant="danger" onClick={() => setAnulando(true)} disabled={enviando}>Anular venta</Button>}
+        <Button variant="outline" onClick={() => window.open(`/ventas/${venta.id}/ticket`, "_blank")}>
+          <Printer className="h-4 w-4" /> Imprimir ticket
+        </Button>
       </div>
 
       <Table>

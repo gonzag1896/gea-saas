@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Plus, Eye, Ban, Clock, CheckCircle2, XCircle, ArrowUpDown, ChevronLeft, ChevronRight,
+  Plus, Eye, Ban, Clock, CheckCircle2, XCircle, ArrowUpDown, ChevronLeft, ChevronRight, Printer,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -214,11 +214,11 @@ export function VentasClient({
           <div className="border border-gray-200 rounded-lg overflow-hidden">
             <table className="w-full table-fixed">
               <colgroup>
-                <col style={{ width: "15%" }} />
-                <col style={{ width: "31%" }} />
-                <col style={{ width: "20%" }} />
-                <col style={{ width: "16%" }} />
+                <col style={{ width: "13%" }} />
+                <col style={{ width: "27%" }} />
                 <col style={{ width: "18%" }} />
+                <col style={{ width: "14%" }} />
+                <col style={{ width: "28%" }} />
               </colgroup>
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
@@ -282,6 +282,16 @@ export function VentasClient({
                             onClick={() => router.push(`/ventas/${venta.id}`)}
                           >
                             <Eye className="h-4 w-4" />
+                          </Button>
+                        </Tooltip>
+                        <Tooltip label="Imprimir ticket" side="left">
+                          <Button
+                            variant="icon"
+                            className="h-8 w-8"
+                            aria-label={`Imprimir ticket de la venta a ${venta.cliente.nombre}`}
+                            onClick={() => window.open(`/ventas/${venta.id}/ticket`, "_blank")}
+                          >
+                            <Printer className="h-4 w-4" />
                           </Button>
                         </Tooltip>
                         {puedeAnular && venta.estado !== "ANULADO" && (
