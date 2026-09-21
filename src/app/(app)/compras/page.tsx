@@ -11,7 +11,7 @@ export default async function ComprasPage() {
   const { ferreteriaId } = contexto;
   const comprasRaw = await prisma.compra.findMany({
     where: { ferreteriaId },
-    select: { id: true, fecha: true, estado: true, total: true, proveedor: { select: { nombre: true } } },
+    select: { id: true, fecha: true, estado: true, medioPago: true, total: true, proveedor: { select: { nombre: true } } },
     orderBy: { fecha: "desc" },
   });
 
