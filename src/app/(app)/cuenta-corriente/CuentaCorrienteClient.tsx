@@ -85,25 +85,22 @@ export function CuentaCorrienteClient({ clientes }: { clientes: ClienteConSaldo[
       {clientesFiltrados.length === 0 ? (
         <EmptyState message={busqueda ? "No hay clientes que coincidan con la búsqueda." : "Todavía no hay clientes cargados."} />
       ) : (
-        <div className="overflow-x-auto border border-gray-200 rounded-lg">
+        <div className="border border-gray-200 rounded-lg overflow-hidden">
           <table className="w-full table-fixed">
             <colgroup>
-              <col style={{ width: "40%" }} />
-              <col style={{ width: "20%" }} />
-              <col style={{ width: "25%" }} />
-              <col style={{ width: "15%" }} />
+              <col style={{ width: "50%" }} />
+              <col style={{ width: "28%" }} />
+              <col style={{ width: "22%" }} />
             </colgroup>
-            {/* Encabezados */}
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="px-4 py-3 text-left">
                   <SortHeader label="Cliente" sortBy="nombre" />
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">
-                  Teléfono
-                </th>
                 <th className="px-4 py-3 text-right">
-                  <SortHeader label="Saldo" sortBy="saldo" />
+                  <div className="flex items-center justify-end">
+                    <SortHeader label="Saldo" sortBy="saldo" />
+                  </div>
                 </th>
                 <th className="px-4 py-3 text-center text-sm font-semibold text-foreground">
                   Estado
@@ -111,7 +108,6 @@ export function CuentaCorrienteClient({ clientes }: { clientes: ClienteConSaldo[
               </tr>
             </thead>
 
-            {/* Filas */}
             <tbody className="divide-y divide-gray-200">
               {clientesFiltrados.map((cliente) => {
                 const esDeuda = cliente.saldo > 0;
@@ -123,20 +119,14 @@ export function CuentaCorrienteClient({ clientes }: { clientes: ClienteConSaldo[
                     className="hover:bg-blue-50 transition-colors cursor-pointer"
                     onClick={() => window.location.href = `/clientes/${cliente.id}`}
                   >
-                    {/* Nombre */}
-                    <td className="px-4 py-4">
-                      <p className="font-medium text-foreground hover:text-blue-600 truncate">
-                        {cliente.nombre}
-                      </p>
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-foreground truncate">{cliente.nombre}</p>
+                      {cliente.telefono && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{cliente.telefono}</p>
+                      )}
                     </td>
 
-                    {/* Teléfono */}
-                    <td className="px-4 py-4 text-sm text-muted-foreground">
-                      {cliente.telefono ?? "—"}
-                    </td>
-
-                    {/* Saldo */}
-                    <td className="px-4 py-4 text-right">
+                    <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <span className={cn(
                           "font-bold font-mono tabular-nums",
@@ -144,30 +134,23 @@ export function CuentaCorrienteClient({ clientes }: { clientes: ClienteConSaldo[
                         )}>
                           ${Math.abs(cliente.saldo).toFixed(2)}
                         </span>
-                        {esDeuda ? (
-                          <TrendingUp className="h-4 w-4 text-red-600 flex-shrink-0" />
-                        ) : (
-                          <TrendingDown className="h-4 w-4 text-green-600 flex-shrink-0" />
-                        )}
+                        {esDeuda
+                          ? <TrendingUp className="h-4 w-4 text-red-500 flex-shrink-0" />
+                          : <TrendingDown className="h-4 w-4 text-green-500 flex-shrink-0" />
+                        }
                       </div>
                     </td>
 
-                    {/* Estado */}
-                    <td className="px-4 py-4">
-                      <div className="flex items-center justify-center gap-1 flex-wrap">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center gap-1">
                         <span className={cn(
                           "px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap",
-                          esDeuda
-                            ? "bg-red-50 text-red-700"
-                            : "bg-green-50 text-green-700"
+                          esDeuda ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"
                         )}>
                           {esDeuda ? "Debe" : "Crédito"}
                         </span>
                         {esVencido && (
-                          <span className="flex items-center gap-1 px-2 py-1 rounded-full bg-orange-50 text-orange-700 text-xs font-medium whitespace-nowrap">
-                            <AlertCircle className="h-3 w-3" />
-                            Venc.
-                          </span>
+                          <AlertCircle className="h-3.5 w-3.5 text-orange-500 flex-shrink-0" />
                         )}
                       </div>
                     </td>

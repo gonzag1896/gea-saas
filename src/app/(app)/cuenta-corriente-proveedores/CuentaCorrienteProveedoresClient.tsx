@@ -81,25 +81,22 @@ export function CuentaCorrienteProveedoresClient({ proveedores }: { proveedores:
       {proveedoresFiltrados.length === 0 ? (
         <EmptyState message={busqueda ? "No hay proveedores que coincidan con la búsqueda." : "Todavía no hay proveedores cargados."} />
       ) : (
-        <div className="overflow-x-auto border border-gray-200 rounded-lg">
+        <div className="border border-gray-200 rounded-lg overflow-hidden">
           <table className="w-full table-fixed">
             <colgroup>
-              <col style={{ width: "40%" }} />
-              <col style={{ width: "20%" }} />
-              <col style={{ width: "25%" }} />
-              <col style={{ width: "15%" }} />
+              <col style={{ width: "50%" }} />
+              <col style={{ width: "28%" }} />
+              <col style={{ width: "22%" }} />
             </colgroup>
-            {/* Encabezados */}
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
                 <th className="px-4 py-3 text-left">
                   <SortHeader label="Proveedor" sortBy="nombre" />
                 </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">
-                  Teléfono
-                </th>
                 <th className="px-4 py-3 text-right">
-                  <SortHeader label="Saldo" sortBy="saldo" />
+                  <div className="flex items-center justify-end">
+                    <SortHeader label="Saldo" sortBy="saldo" />
+                  </div>
                 </th>
                 <th className="px-4 py-3 text-center text-sm font-semibold text-foreground">
                   Estado
@@ -107,7 +104,6 @@ export function CuentaCorrienteProveedoresClient({ proveedores }: { proveedores:
               </tr>
             </thead>
 
-            {/* Filas */}
             <tbody className="divide-y divide-gray-200">
               {proveedoresFiltrados.map((proveedor) => {
                 const esDeuda = proveedor.saldo > 0;
@@ -118,20 +114,14 @@ export function CuentaCorrienteProveedoresClient({ proveedores }: { proveedores:
                     className="hover:bg-blue-50 transition-colors cursor-pointer"
                     onClick={() => window.location.href = `/proveedores/${proveedor.id}`}
                   >
-                    {/* Nombre */}
-                    <td className="px-4 py-4">
-                      <p className="font-medium text-foreground hover:text-blue-600 truncate">
-                        {proveedor.nombre}
-                      </p>
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-foreground truncate">{proveedor.nombre}</p>
+                      {proveedor.telefono && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{proveedor.telefono}</p>
+                      )}
                     </td>
 
-                    {/* Teléfono */}
-                    <td className="px-4 py-4 text-sm text-muted-foreground">
-                      {proveedor.telefono ?? "—"}
-                    </td>
-
-                    {/* Saldo */}
-                    <td className="px-4 py-4 text-right">
+                    <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <span className={cn(
                           "font-bold font-mono tabular-nums",
@@ -139,22 +129,18 @@ export function CuentaCorrienteProveedoresClient({ proveedores }: { proveedores:
                         )}>
                           ${Math.abs(proveedor.saldo).toFixed(2)}
                         </span>
-                        {esDeuda ? (
-                          <TrendingUp className="h-4 w-4 text-red-600 flex-shrink-0" />
-                        ) : (
-                          <TrendingDown className="h-4 w-4 text-green-600 flex-shrink-0" />
-                        )}
+                        {esDeuda
+                          ? <TrendingUp className="h-4 w-4 text-red-500 flex-shrink-0" />
+                          : <TrendingDown className="h-4 w-4 text-green-500 flex-shrink-0" />
+                        }
                       </div>
                     </td>
 
-                    {/* Estado */}
-                    <td className="px-4 py-4">
+                    <td className="px-4 py-3">
                       <div className="flex items-center justify-center">
                         <span className={cn(
                           "px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap",
-                          esDeuda
-                            ? "bg-red-50 text-red-700"
-                            : "bg-green-50 text-green-700"
+                          esDeuda ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"
                         )}>
                           {esDeuda ? "A pagar" : "A favor"}
                         </span>
