@@ -1,16 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, RotateCcw, Wallet } from "lucide-react";
+import { Plus, Pencil, Trash2, RotateCcw, Wallet, ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
-import { DataTable } from "@/components/ui/DataTable";
+import { Input } from "@/components/ui/Input";
 import { ActivoBadge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Tooltip } from "@/components/ui/Tooltip";
+import { cn } from "@/lib/cn";
 
 type Proveedor = { id: string; nombre: string; rut: string | null; telefono: string | null; email: string | null; activo: boolean };
+type SortKey = "nombre" | "estado";
+type SortDir = "asc" | "desc";
+const PAGE_SIZE = 10;
 
 export function ProveedoresClient({
   proveedoresIniciales,
@@ -28,6 +34,10 @@ export function ProveedoresClient({
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const [aEliminar, setAEliminar] = useState<Proveedor | null>(null);
   const [eliminando, setEliminando] = useState(false);
+  const [busqueda, setBusqueda] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("nombre");
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     setOverrides((prev) => {
@@ -44,6 +54,47 @@ export function ProveedoresClient({
   }, [proveedoresIniciales]);
 
   const proveedores = proveedoresIniciales.map((p) => (overrides[p.id] !== undefined ? { ...p, activo: overrides[p.id] } : p));
+
+  const proveedoresFiltrados = useMemo(() => {
+    const filtered = proveedores.filter((p) =>
+      `${p.nombre} ${p.rut ?? ""} ${p.telefono ?? ""} ${p.email ?? ""}`.toLowerCase().includes(busqueda.toLowerCase())
+    );
+
+    filtered.sort((a, b) => {
+      const cmp = sortKey === "nombre"
+        ? a.nombre.toLowerCase().localeCompare(b.nombre.toLowerCase())
+        : Number(a.activo) - Number(b.activo);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+
+    return filtered;
+  }, [proveedores, busqueda, sortKey, sortDir]);
+
+  const totalPaginas = Math.max(1, Math.ceil(proveedoresFiltrados.length / PAGE_SIZE));
+  const paginaActual = Math.min(page, totalPaginas);
+  const proveedoresPagina = proveedoresFiltrados.slice((paginaActual - 1) * PAGE_SIZE, paginaActual * PAGE_SIZE);
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+    setPage(1);
+  }
+
+  const SortHeader = ({ label, sortBy }: { label: string; sortBy: SortKey }) => (
+    <button
+      onClick={() => toggleSort(sortBy)}
+      className="flex items-center gap-2 font-semibold text-foreground hover:text-blue-600 transition-colors"
+    >
+      {label}
+      {sortKey === sortBy && (
+        <ArrowUpDown className={cn("h-4 w-4", sortDir === "desc" && "rotate-180")} />
+      )}
+    </button>
+  );
 
   async function reactivar(proveedor: Proveedor) {
     setOverrides((o) => ({ ...o, [proveedor.id]: true }));
@@ -88,47 +139,141 @@ export function ProveedoresClient({
 
       {error && <Alert>{error}</Alert>}
 
-      <DataTable
-        data={proveedores}
-        rowKey={(p) => p.id}
-        searchValue={(p) => `${p.nombre} ${p.rut ?? ""} ${p.email ?? ""}`}
-        searchPlaceholder="Buscar proveedor…"
-        emptyMessage="Todavía no hay proveedores cargados."
-        columns={[
-          { key: "nombre", header: "Nombre", sortValue: (p) => p.nombre, render: (p) => p.nombre },
-          { key: "rut", header: "RUT", sortValue: (p) => p.rut ?? "", render: (p) => p.rut ?? "—" },
-          { key: "telefono", header: "Teléfono", render: (p) => p.telefono ?? "—" },
-          { key: "email", header: "Email", render: (p) => p.email ?? "—" },
-          { key: "estado", header: "Estado", sortValue: (p) => Number(p.activo), render: (p) => <ActivoBadge activo={p.activo} /> },
-          {
-            key: "acciones",
-            header: "",
-            headClassName: "w-0",
-            render: (p) => (
-              <div className="flex items-center justify-end gap-1">
-                <Button variant="icon" className="h-8 w-8" aria-label={`Cuenta corriente de ${p.nombre}`} onClick={() => router.push(`/proveedores/${p.id}`)}>
-                  <Wallet className="h-4 w-4" />
+      <div className="flex items-center gap-4">
+        <Input
+          type="search"
+          placeholder="Buscar proveedor…"
+          value={busqueda}
+          onChange={(e) => { setBusqueda(e.target.value); setPage(1); }}
+          className="max-w-sm"
+        />
+        <p className="text-sm text-muted-foreground">
+          {proveedoresFiltrados.length} de {proveedores.length} proveedores
+        </p>
+      </div>
+
+      {proveedoresFiltrados.length === 0 ? (
+        <EmptyState message={busqueda ? "No hay proveedores que coincidan con la búsqueda." : "Todavía no hay proveedores cargados."} />
+      ) : (
+        <>
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <table className="w-full table-fixed">
+              <colgroup>
+                <col style={{ width: "48%" }} />
+                <col style={{ width: "20%" }} />
+                <col style={{ width: "32%" }} />
+              </colgroup>
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-4 py-3 text-left">
+                    <SortHeader label="Proveedor" sortBy="nombre" />
+                  </th>
+                  <th className="px-4 py-3 text-center">
+                    <div className="flex items-center justify-center">
+                      <SortHeader label="Estado" sortBy="estado" />
+                    </div>
+                  </th>
+                  <th className="px-4 py-3 text-right text-sm font-semibold text-foreground">
+                    Acciones
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-gray-200">
+                {proveedoresPagina.map((proveedor) => {
+                  const detalles = [proveedor.rut, proveedor.telefono, proveedor.email].filter(Boolean).join(" · ");
+
+                  return (
+                    <tr
+                      key={proveedor.id}
+                      className="hover:bg-blue-50 transition-colors cursor-pointer"
+                      onClick={() => router.push(`/proveedores/${proveedor.id}`)}
+                    >
+                      <td className="px-4 py-3">
+                        <p className="font-medium text-foreground truncate">{proveedor.nombre}</p>
+                        {detalles && (
+                          <p className="text-xs text-muted-foreground mt-0.5 truncate">{detalles}</p>
+                        )}
+                      </td>
+
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-center">
+                          <ActivoBadge activo={proveedor.activo} />
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1">
+                          <Tooltip label="Cuenta corriente" side="left">
+                            <Button
+                              variant="icon"
+                              className="h-8 w-8"
+                              aria-label={`Cuenta corriente de ${proveedor.nombre}`}
+                              onClick={() => router.push(`/proveedores/${proveedor.id}`)}
+                            >
+                              <Wallet className="h-4 w-4" />
+                            </Button>
+                          </Tooltip>
+                          {puedeEditar && (
+                            <Tooltip label="Editar" side="left">
+                              <Button
+                                variant="icon"
+                                className="h-8 w-8"
+                                aria-label={`Editar ${proveedor.nombre}`}
+                                onClick={() => router.push(`/proveedores/${proveedor.id}/editar`)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            </Tooltip>
+                          )}
+                          {puedeEliminar && proveedor.activo && (
+                            <Tooltip label="Desactivar" side="left">
+                              <Button
+                                variant="icon"
+                                className="h-8 w-8 hover:text-danger"
+                                aria-label={`Desactivar ${proveedor.nombre}`}
+                                onClick={() => setAEliminar(proveedor)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </Tooltip>
+                          )}
+                          {puedeEliminar && !proveedor.activo && (
+                            <Tooltip label="Reactivar" side="left">
+                              <Button
+                                variant="icon"
+                                className="h-8 w-8 hover:text-success"
+                                aria-label={`Reactivar ${proveedor.nombre}`}
+                                onClick={() => reactivar(proveedor)}
+                              >
+                                <RotateCcw className="h-4 w-4" />
+                              </Button>
+                            </Tooltip>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {totalPaginas > 1 && (
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
+              <span>Página {paginaActual} de {totalPaginas} · {proveedoresFiltrados.length} resultados</span>
+              <div className="flex gap-1">
+                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={paginaActual === 1}>
+                  <ChevronLeft className="h-4 w-4" />
                 </Button>
-                {puedeEditar && (
-                  <Button variant="icon" className="h-8 w-8" aria-label={`Editar ${p.nombre}`} onClick={() => router.push(`/proveedores/${p.id}/editar`)}>
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                )}
-                {puedeEliminar && p.activo && (
-                  <Button variant="icon" className="h-8 w-8 hover:text-danger" aria-label={`Desactivar ${p.nombre}`} onClick={() => setAEliminar(p)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                )}
-                {puedeEliminar && !p.activo && (
-                  <Button variant="icon" className="h-8 w-8 hover:text-success" aria-label={`Reactivar ${p.nombre}`} onClick={() => reactivar(p)}>
-                    <RotateCcw className="h-4 w-4" />
-                  </Button>
-                )}
+                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPaginas, p + 1))} disabled={paginaActual === totalPaginas}>
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
               </div>
-            ),
-          },
-        ]}
-      />
+            </div>
+          )}
+        </>
+      )}
 
       <ConfirmDialog
         open={aEliminar !== null}
