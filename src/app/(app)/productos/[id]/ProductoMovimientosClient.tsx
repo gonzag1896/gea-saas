@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Table } from "@/components/ui/Table";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { formatearFecha } from "@/lib/fecha";
 
 type Producto = { id: string; codigo: string; descripcion: string; stockActual: number; stockMinimo: number };
 type Movimiento = {
@@ -99,7 +100,7 @@ export function ProductoMovimientosClient({
           <tbody>
             {movimientosIniciales.map((m) => (
               <Table.Row key={m.id}>
-                <Table.Cell>{new Date(m.fecha).toLocaleDateString("es-UY")}</Table.Cell>
+                <Table.Cell>{formatearFecha(m.fecha)}</Table.Cell>
                 <Table.Cell>{ETIQUETA_TIPO[m.tipo]}</Table.Cell>
                 <Table.Cell>{m.cantidad}</Table.Cell>
                 <Table.Cell>{m.origenTipo}</Table.Cell>

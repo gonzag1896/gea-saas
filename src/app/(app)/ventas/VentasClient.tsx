@@ -15,6 +15,7 @@ import { ExportarButton } from "@/components/ui/ExportarButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { cn } from "@/lib/cn";
+import { formatearFecha } from "@/lib/fecha";
 
 type Estado = "PENDIENTE" | "CONFIRMADO" | "ANULADO";
 type MedioPago = "CONTADO" | "CREDITO" | "TRANSFERENCIA";
@@ -249,7 +250,7 @@ export function VentasClient({
                     onClick={() => router.push(`/ventas/${venta.id}`)}
                   >
                     <td className="px-4 py-3 text-sm text-muted-foreground">
-                      {new Date(venta.fecha).toLocaleDateString("es-UY")}
+                      {formatearFecha(venta.fecha)}
                     </td>
 
                     <td className="px-4 py-3">

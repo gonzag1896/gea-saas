@@ -8,6 +8,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Table } from "@/components/ui/Table";
 import { PromptDialog } from "@/components/ui/PromptDialog";
 import { DevolucionDialog } from "@/components/dialogs/DevolucionDialog";
+import { formatearFecha } from "@/lib/fecha";
 
 type Linea = {
   id: string;
@@ -91,7 +92,7 @@ export function CompraDetalleClient({
     <div className="flex flex-col gap-6">
       <PageHeader
         title={`Compra — ${compra.proveedor.nombre}`}
-        description={`Fecha: ${new Date(compra.fecha).toLocaleDateString("es-UY")} · Factura: ${compra.numeroFactura ?? "—"} · Estado: ${compra.estado}`}
+        description={`Fecha: ${formatearFecha(compra.fecha)} · Factura: ${compra.numeroFactura ?? "—"} · Estado: ${compra.estado}`}
       />
 
       {compra.estado === "ANULADO" && <Alert>Motivo de anulación: {compra.motivoAnulacion}</Alert>}

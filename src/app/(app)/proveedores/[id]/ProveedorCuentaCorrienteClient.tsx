@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { cn } from "@/lib/cn";
+import { formatearFecha } from "@/lib/fecha";
 
 type Movimiento = {
   id: string;
@@ -194,7 +195,7 @@ export function ProveedorCuentaCorrienteClient({
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-foreground">{ETIQUETA_ORIGEN[m.origenTipo] ?? m.origenTipo}</p>
                         <p className="text-sm text-muted-foreground">
-                          {new Date(m.fecha).toLocaleDateString("es-UY")}
+                          {formatearFecha(m.fecha)}
                           {m.referencia && ` • ${m.referencia}`}
                         </p>
                       </div>

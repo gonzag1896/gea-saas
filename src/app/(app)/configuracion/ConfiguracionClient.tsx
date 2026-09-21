@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/Input";
 import { FormField } from "@/components/ui/FormField";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
+import { formatearFecha } from "@/lib/fecha";
 
 export function ConfiguracionClient({
   cotizacionDolar,
@@ -35,7 +36,7 @@ export function ConfiguracionClient({
     setConsultando(false);
     if (!res.ok) return setError(data.error);
     setValor(String(data.venta));
-    setInfoBcu(`BCU al ${new Date(data.fecha).toLocaleDateString("es-UY")}: compra $${data.compra} · venta $${data.venta}`);
+    setInfoBcu(`BCU al ${formatearFecha(data.fecha)}: compra $${data.compra} · venta $${data.venta}`);
   }
 
   async function guardar(e: React.FormEvent) {

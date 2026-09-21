@@ -8,6 +8,7 @@ import { Alert } from "@/components/ui/Alert";
 import { Table } from "@/components/ui/Table";
 import { PromptDialog } from "@/components/ui/PromptDialog";
 import { DevolucionDialog } from "@/components/dialogs/DevolucionDialog";
+import { formatearFecha } from "@/lib/fecha";
 
 type Linea = {
   id: string;
@@ -92,7 +93,7 @@ export function VentaDetalleClient({
     <div className="flex flex-col gap-6">
       <PageHeader
         title={`Venta — ${venta.cliente.nombre}`}
-        description={`Fecha: ${new Date(venta.fecha).toLocaleDateString("es-UY")} · Medio de pago: ${venta.medioPago} · Estado: ${venta.estado}`}
+        description={`Fecha: ${formatearFecha(venta.fecha)} · Medio de pago: ${venta.medioPago} · Estado: ${venta.estado}`}
       />
 
       {venta.estado === "ANULADO" && <Alert>Motivo de anulación: {venta.motivoAnulacion}</Alert>}

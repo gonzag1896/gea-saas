@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
+import { formatearFechaHoyUruguay } from "@/lib/fecha";
 
 export type ColumnaReporte<T> = {
   header: string;
@@ -122,7 +123,7 @@ export async function generarListaPreciosPdf<T>(
     doc.moveDown(0.2);
     doc.fontSize(18).fillColor("#0067B8").text(tituloLista, { align: "center" });
     doc.moveDown(0.2);
-    doc.fontSize(9).fillColor("#64748b").text(`Lista de precios vigente al ${new Date().toLocaleDateString("es-UY")}`, { align: "center" });
+    doc.fontSize(9).fillColor("#64748b").text(`Lista de precios vigente al ${formatearFechaHoyUruguay()}`, { align: "center" });
     doc.moveDown(1.2);
 
     const encabezado: string[] = columnas.map((c) => c.header);

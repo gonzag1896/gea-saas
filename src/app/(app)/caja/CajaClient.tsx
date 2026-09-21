@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { cn } from "@/lib/cn";
+import { formatearFecha } from "@/lib/fecha";
 
 type Esperado = { totalVentasContado: number; totalCobrosContado: number; totalEsperado: number };
 type Cierre = {
@@ -261,7 +262,7 @@ export function CajaClient({
                   {cierresPagina.map((c) => (
                     <tr key={c.id}>
                       <td className="px-4 py-3 text-sm text-muted-foreground">
-                        {new Date(c.fecha).toLocaleDateString("es-UY")}
+                        {formatearFecha(c.fecha)}
                       </td>
                       <td className="px-4 py-3 text-right font-mono tabular-nums text-sm text-foreground">
                         $ {formatoMoneda(c.totalEsperado)}

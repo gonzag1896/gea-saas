@@ -6,6 +6,7 @@ import { Select } from "@/components/ui/Select";
 import { DataTable } from "@/components/ui/DataTable";
 import { Badge, type BadgeVariant } from "@/components/ui/Badge";
 import { ExportarButton } from "@/components/ui/ExportarButton";
+import { formatearFecha } from "@/lib/fecha";
 
 type TipoMovimiento = "ENTRADA" | "SALIDA" | "AJUSTE_POSITIVO" | "AJUSTE_NEGATIVO";
 
@@ -80,7 +81,7 @@ export function MovimientoStockClient({ movimientos }: { movimientos: Movimiento
             key: "fecha",
             header: "Fecha",
             sortValue: (m) => m.fecha,
-            render: (m) => new Date(m.fecha).toLocaleDateString("es-UY"),
+            render: (m) => formatearFecha(m.fecha),
           },
           {
             key: "producto",

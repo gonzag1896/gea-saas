@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requirePermiso } from "@/lib/tenant";
 import { responderReporte, type ColumnaReporte } from "@/lib/reportes";
+import { formatearFecha } from "@/lib/fecha";
 
 type FilaCompra = {
   fecha: Date;
@@ -11,7 +12,7 @@ type FilaCompra = {
 };
 
 const COLUMNAS: ColumnaReporte<FilaCompra>[] = [
-  { header: "Fecha", value: (c) => c.fecha.toLocaleDateString("es-UY"), anchoExcel: 14, anchoPdf: 90 },
+  { header: "Fecha", value: (c) => formatearFecha(c.fecha), anchoExcel: 14, anchoPdf: 90 },
   { header: "Proveedor", value: (c) => c.proveedor, anchoExcel: 32, anchoPdf: 220 },
   { header: "Estado", value: (c) => c.estado, anchoExcel: 14, anchoPdf: 90 },
   { header: "Total", value: (c) => c.total, anchoExcel: 14, anchoPdf: 90, alineacion: "right" },

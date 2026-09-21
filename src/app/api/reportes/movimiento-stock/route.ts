@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { requirePermiso } from "@/lib/tenant";
 import { responderReporte, type ColumnaReporte } from "@/lib/reportes";
+import { formatearFecha } from "@/lib/fecha";
 
 type FilaMovimiento = {
   fecha: Date;
@@ -28,7 +29,7 @@ const ETIQUETA_ORIGEN: Record<string, string> = {
 };
 
 const COLUMNAS: ColumnaReporte<FilaMovimiento>[] = [
-  { header: "Fecha", value: (m) => m.fecha.toLocaleDateString("es-UY"), anchoExcel: 14, anchoPdf: 60 },
+  { header: "Fecha", value: (m) => formatearFecha(m.fecha), anchoExcel: 14, anchoPdf: 60 },
   { header: "Producto", value: (m) => m.producto, anchoExcel: 34, anchoPdf: 150 },
   { header: "Tipo", value: (m) => m.tipo, anchoExcel: 14, anchoPdf: 60 },
   { header: "Cantidad", value: (m) => m.cantidad, anchoExcel: 12, anchoPdf: 55, alineacion: "right" },
