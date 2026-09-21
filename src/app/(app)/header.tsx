@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { ChevronDown, History, Repeat, LogOut, ShieldCheck } from "lucide-react";
+import { ChevronDown, History, Repeat, LogOut, ShieldCheck, KeyRound } from "lucide-react";
 import type { RolFerreteria } from "@prisma/client";
 import { tienePermiso } from "@/lib/permisos";
 import { Dropdown, DropdownItem, DropdownLabel, DropdownSeparator } from "@/components/ui/Dropdown";
@@ -78,6 +78,9 @@ export function Header({
       >
         <DropdownLabel>{email}</DropdownLabel>
         <DropdownSeparator />
+        <DropdownItem onClick={() => router.push("/mi-cuenta")}>
+          <KeyRound className="h-4 w-4" /> Mi cuenta
+        </DropdownItem>
         {!isSuperAdmin && (
           <DropdownItem onClick={cambiarFerreteria}>
             <Repeat className="h-4 w-4" /> Cambiar de ferretería

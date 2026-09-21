@@ -35,7 +35,11 @@ export type AccionAuditoria =
   | "COBRO_REGISTRA"
   | "PAGO_PROVEEDOR_REGISTRA"
   | "CAJA_CIERRE"
-  | "COTIZACION_DOLAR_ACTUALIZA";
+  | "COTIZACION_DOLAR_ACTUALIZA"
+  | "USUARIO_CREA"
+  | "USUARIO_ROL_CAMBIA"
+  | "USUARIO_DESACTIVA"
+  | "USUARIO_REACTIVA";
 
 export async function auditar(params: {
   accion: AccionAuditoria;

@@ -6,7 +6,7 @@ import Image from "next/image";
 import {
   LayoutDashboard, FolderTree, FolderOpen, BadgeCheck, Package,
   Users, Truck, ShoppingCart, Receipt, Wallet, ArrowLeftRight, PackageSearch, Banknote, Tags,
-  PanelLeftClose, PanelLeftOpen, Settings, ChevronDown,
+  PanelLeftClose, PanelLeftOpen, Settings, ChevronDown, UserCog,
 } from "lucide-react";
 import type { RolFerreteria } from "@prisma/client";
 import { tienePermiso } from "@/lib/permisos";
@@ -99,7 +99,7 @@ export function Sidebar({ rol }: { rol: RolFerreteria | null | undefined }) {
                pathname.startsWith("/cuenta-corriente") ||
                pathname.startsWith("/caja")) {
       setExpandedGroup("comercial");
-    } else if (pathname.startsWith("/configuracion")) {
+    } else if (pathname.startsWith("/configuracion") || pathname.startsWith("/usuarios")) {
       setExpandedGroup("sistema");
     } else {
       setExpandedGroup("");
@@ -189,7 +189,7 @@ export function Sidebar({ rol }: { rol: RolFerreteria | null | undefined }) {
           </GrupoNav>
         )}
 
-        {rol && tienePermiso(rol, "configuracion", "ver") && (
+        {rol && (tienePermiso(rol, "configuracion", "ver") || tienePermiso(rol, "usuarios", "ver")) && (
           <GrupoNav
             titulo="Sistema"
             collapsed={collapsed}
@@ -197,7 +197,8 @@ export function Sidebar({ rol }: { rol: RolFerreteria | null | undefined }) {
             isExpanded={expandedGroup === "sistema"}
             onToggle={() => toggleGroup("sistema")}
           >
-            <NavLink href="/configuracion" icon={<Settings className={iconClass} />} collapsed={collapsed}>Configuración</NavLink>
+            {tienePermiso(rol, "usuarios", "ver") && <NavLink href="/usuarios" icon={<UserCog className={iconClass} />} collapsed={collapsed}>Usuarios</NavLink>}
+            {tienePermiso(rol, "configuracion", "ver") && <NavLink href="/configuracion" icon={<Settings className={iconClass} />} collapsed={collapsed}>Configuración</NavLink>}
           </GrupoNav>
         )}
       </nav>
