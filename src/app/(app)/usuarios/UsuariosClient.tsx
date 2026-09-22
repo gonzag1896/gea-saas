@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Plus, Trash2, RotateCcw, ArrowUpDown, ChevronLeft, ChevronRight,
+  Plus, Pencil, Trash2, RotateCcw, ArrowUpDown, ChevronLeft, ChevronRight,
   Clock, CheckCircle2, XCircle, ShieldAlert,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -289,6 +289,18 @@ export function UsuariosClient({
 
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
+                          {puedeEditar && !inactivo && (
+                            <Tooltip label="Editar" side="left">
+                              <Button
+                                variant="icon"
+                                className="h-8 w-8"
+                                aria-label={`Editar a ${usuario.nombre || usuario.email}`}
+                                onClick={() => router.push(`/usuarios/${usuario.id}/editar`)}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            </Tooltip>
+                          )}
                           {!esUnoMismo && puedeEliminar && !inactivo && (
                             <Tooltip label="Desactivar" side="left">
                               <Button

@@ -11,4 +11,7 @@ export const crearUsuarioSchema = z.object({
 export const actualizarUsuarioSchema = z.object({
   rol: z.enum(["DUENO", "CAJERO", "DEPOSITO"]).optional(),
   estado: z.enum(["ACTIVO", "INACTIVO"]).optional(),
+  nombre: z.string().min(1, "El nombre es obligatorio.").optional(),
+  email: z.string().email("Ingresá un email válido.").optional(),
+  passwordNueva: passwordSchema.optional(),
 });

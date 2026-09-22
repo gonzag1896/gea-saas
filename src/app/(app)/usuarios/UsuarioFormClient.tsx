@@ -30,11 +30,14 @@ function generarPassword(largo = 12) {
   return resultado;
 }
 
-export function UsuarioFormClient() {
+type UsuarioEditable = { id: string; nombre: string | null; email: string; rol: Rol };
+
+export function UsuarioFormClient({ usuario }: { usuario?: UsuarioEditable }) {
   const router = useRouter();
-  const [nombre, setNombre] = useState("");
-  const [email, setEmail] = useState("");
-  const [rol, setRol] = useState<Rol>("CAJERO");
+  const esEdicion = !!usuario;
+  const [nombre, setNombre] = useState(usuario?.nombre ?? "");
+  const [email, setEmail] = useState(usuario?.email ?? "");
+  const [rol, setRol] = useState<Rol>(usuario?.rol ?? "CAJERO");
   const [password, setPassword] = useState("");
   const [verPassword, setVerPassword] = useState(false);
   const [copiado, setCopiado] = useState(false);
@@ -62,11 +65,24 @@ export function UsuarioFormClient() {
     e.preventDefault();
     setError(null);
     setGuardando(true);
-    const res = await fetch("/api/usuarios", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nombre, email, rol, password }),
-    });
+
+    const res = esEdicion
+      ? await fetch(`/api/usuarios/${usuario.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nombre,
+            email,
+            rol,
+            ...(password ? { passwordNueva: password } : {}),
+          }),
+        })
+      : await fetch("/api/usuarios", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nombre, email, rol, password }),
+        });
+
     setGuardando(false);
     if (!res.ok) return setError((await res.json()).error);
     router.push("/usuarios");
@@ -76,8 +92,10 @@ export function UsuarioFormClient() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Nuevo usuario"
-        description="Le pasás vos el email y la contraseña a la persona. Puede cambiarla después desde “Mi cuenta”."
+        title={esEdicion ? "Editar usuario" : "Nuevo usuario"}
+        description={esEdicion
+          ? "Cambiá nombre, email o rol. Dejá la contraseña en blanco si no querés cambiarla."
+          : "Le pasás vos el email y la contraseña a la persona. Puede cambiarla después desde “Mi cuenta”."}
       />
 
       <Card className="max-w-lg">
@@ -99,16 +117,18 @@ export function UsuarioFormClient() {
           </FormField>
           <FieldHint>{DESCRIPCION_ROL[rol]}</FieldHint>
 
-          <FormField label="Contraseña temporal" required>
+          <FormField label={esEdicion ? "Nueva contraseña (opcional)" : "Contraseña temporal"} required={!esEdicion}>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Input
                   type={verPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  minLength={10}
-                  placeholder="Mínimo 10 caracteres"
-                  required
+                  minLength={esEdicion ? undefined : 10}
+                  pattern={esEdicion && password ? ".{10,}" : undefined}
+                  title={esEdicion ? "Mínimo 10 caracteres" : undefined}
+                  placeholder={esEdicion ? "Dejar en blanco para no cambiarla" : "Mínimo 10 caracteres"}
+                  required={!esEdicion}
                   className="pr-9"
                 />
                 <button
@@ -133,7 +153,7 @@ export function UsuarioFormClient() {
           {error && <Alert>{error}</Alert>}
 
           <div className="flex gap-3">
-            <Button type="submit" loading={guardando}>Crear usuario</Button>
+            <Button type="submit" loading={guardando}>{esEdicion ? "Guardar cambios" : "Crear usuario"}</Button>
             <Button type="button" variant="outline" onClick={() => router.push("/usuarios")}>Cancelar</Button>
           </div>
         </form>

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePermiso } from "@/lib/tenant";
 import { tienePermiso } from "@/lib/permisos";
-import { cambiarRolUsuario, cambiarEstadoMembresia } from "@/lib/usuarios";
+import { cambiarRolUsuario, cambiarEstadoMembresia, editarDatosUsuario } from "@/lib/usuarios";
 import { actualizarUsuarioSchema } from "@/lib/schemas-usuarios";
 import { manejarErrorNegocio } from "@/lib/errores-negocio";
 
@@ -24,6 +24,10 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   if (parsed.data.rol !== undefined && !tienePermiso(contexto.rol, "usuarios", "modificar")) {
     return NextResponse.json({ error: "No autorizado." }, { status: 403 });
   }
+  const editaDatos = parsed.data.nombre !== undefined || parsed.data.email !== undefined || parsed.data.passwordNueva !== undefined;
+  if (editaDatos && !tienePermiso(contexto.rol, "usuarios", "modificar")) {
+    return NextResponse.json({ error: "No autorizado." }, { status: 403 });
+  }
   if (contexto.soporte) return NextResponse.json({ error: "No autorizado." }, { status: 403 });
 
   try {
@@ -32,6 +36,13 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     }
     if (parsed.data.estado !== undefined) {
       await cambiarEstadoMembresia(contexto.ferreteriaId, params.id, parsed.data.estado, contexto.usuarioId);
+    }
+    if (editaDatos) {
+      await editarDatosUsuario(contexto.ferreteriaId, params.id, {
+        nombre: parsed.data.nombre,
+        email: parsed.data.email,
+        passwordNueva: parsed.data.passwordNueva,
+      }, contexto.usuarioId);
     }
     return NextResponse.json({ ok: true });
   } catch (error) {

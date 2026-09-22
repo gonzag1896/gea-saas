@@ -99,6 +99,54 @@ export async function crearUsuario(
   return membresia;
 }
 
+// Edición de los datos del Usuario (nombre, email, contraseña) desde la
+// gestión de usuarios de la ferretería — distinto de "Mi cuenta", que es
+// el cambio de contraseña que hace la propia persona pidiendo su
+// contraseña actual. Acá el Dueño edita a otro miembro (o a sí mismo) sin
+// necesitar la contraseña vieja, porque ya está autenticado como Dueño.
+export async function editarDatosUsuario(
+  ferreteriaId: string,
+  membresiaId: string,
+  datos: { nombre?: string; email?: string; passwordNueva?: string },
+  usuarioQueEjecuta: string,
+) {
+  const membresia = await prisma.ferreteriaUsuario.findUnique({ where: { id: membresiaId } });
+  if (!membresia || membresia.ferreteriaId !== ferreteriaId) throw new EntidadNoEncontradaError("Usuario no encontrado.");
+
+  const data: { name?: string; email?: string; passwordHash?: string } = {};
+  if (datos.nombre !== undefined) data.name = datos.nombre;
+
+  if (datos.email !== undefined) {
+    const email = datos.email.toLowerCase().trim();
+    const existente = await prisma.usuario.findUnique({ where: { email } });
+    if (existente && existente.id !== membresia.usuarioId) {
+      throw new EstadoInvalidoError("Ese email ya está en uso por otro usuario.");
+    }
+    data.email = email;
+  }
+
+  if (datos.passwordNueva !== undefined) {
+    data.passwordHash = await bcrypt.hash(datos.passwordNueva, 12);
+  }
+
+  const actualizado = await prisma.usuario.update({ where: { id: membresia.usuarioId }, data });
+
+  await auditar({
+    accion: "USUARIO_DATOS_EDITA",
+    usuarioId: usuarioQueEjecuta,
+    ferreteriaId,
+    entidad: "Usuario",
+    entidadId: membresia.usuarioId,
+    detalle: {
+      nombreCambiado: datos.nombre !== undefined,
+      emailCambiado: datos.email !== undefined,
+      passwordCambiada: datos.passwordNueva !== undefined,
+    },
+  });
+
+  return actualizado;
+}
+
 export async function cambiarRolUsuario(
   ferreteriaId: string,
   membresiaId: string,
