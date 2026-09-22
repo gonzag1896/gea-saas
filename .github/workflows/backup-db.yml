@@ -12,6 +12,21 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
+      # El pg_dump que trae ubuntu-latest de fábrica es la v16 — Neon corre
+      # Postgres 18, y pg_dump se niega a volcar un servidor más nuevo que
+      # él mismo ("server version mismatch"). Se instala la v18 real desde
+      # el repositorio oficial de PostgreSQL en vez de confiar en la que
+      # venga preinstalada.
+      - name: Instalar pg_dump 18 (repo oficial de PostgreSQL)
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc --fail \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          . /etc/os-release
+          sudo sh -c "echo 'deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main' > /etc/apt/sources.list.d/pgdg.list"
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-18
+
       - name: Generar el dump de Postgres
         env:
           # Conexión DIRECTA (sin -pooler) a Neon: pg_dump necesita una
@@ -22,7 +37,7 @@ jobs:
           echo "FECHA=$FECHA" >> "$GITHUB_ENV"
           # Formato "custom" (-Fc): comprimido y restaurable con pg_restore,
           # incluyendo restauración parcial (tabla por tabla) si hiciera falta.
-          pg_dump "$DATABASE_URL" -Fc --no-owner --no-privileges -f "gea-backup-$FECHA.dump"
+          /usr/lib/postgresql/18/bin/pg_dump "$DATABASE_URL" -Fc --no-owner --no-privileges -f "gea-backup-$FECHA.dump"
 
       - name: Subir el respaldo a Cloudflare R2
         env:
