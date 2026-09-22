@@ -1,0 +1,40 @@
+name: Respaldo diario de la base de datos
+
+# Corre todos los días a las 06:00 UTC (03:00 en Montevideo) y también se
+# puede disparar a mano desde la pestaña Actions ("Run workflow") para
+# probarlo o sacar un respaldo extra antes de un cambio grande.
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generar el dump de Postgres
+        env:
+          # Conexión DIRECTA (sin -pooler) a Neon: pg_dump necesita una
+          # sesión real, no una del pooler en modo transacción.
+          DATABASE_URL: ${{ secrets.NEON_DIRECT_URL }}
+        run: |
+          FECHA=$(date -u +%Y-%m-%d)
+          echo "FECHA=$FECHA" >> "$GITHUB_ENV"
+          # Formato "custom" (-Fc): comprimido y restaurable con pg_restore,
+          # incluyendo restauración parcial (tabla por tabla) si hiciera falta.
+          pg_dump "$DATABASE_URL" -Fc --no-owner --no-privileges -f "gea-backup-$FECHA.dump"
+
+      - name: Subir el respaldo a Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          # R2 no soporta el cálculo de checksum que trae por defecto
+          # AWS CLI v2 desde sus versiones más recientes — sin esto, la
+          # subida falla con un error de checksum mismatch.
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+        run: |
+          aws s3 cp "gea-backup-$FECHA.dump" \
+            "s3://${{ secrets.R2_BUCKET }}/gea-backup-$FECHA.dump" \
+            --endpoint-url "https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com"
