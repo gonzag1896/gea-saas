@@ -1,9 +1,43 @@
 import { prisma } from "@/lib/db";
+import type { Prisma, MedioPago } from "@prisma/client";
 import type { crearVentaSchema } from "@/lib/schemas-ventas";
 import { aplicarMovimientoStock } from "@/lib/stock";
 import { auditar } from "@/lib/auditoria";
 import { EntidadNoEncontradaError, EstadoInvalidoError, CantidadInvalidaError } from "@/lib/errores-dominio";
 import type { z } from "zod";
+
+// Asienta el efecto de una venta en la cuenta corriente del cliente según
+// su medio de pago — un único lugar para no repetir esto entre
+// crearVentaConfirmada (alta) y confirmarVenta (flujo Pendiente→Confirmado).
+// Crédito: un Debe por el total (la deuda real). Contado/Débito: un Debe
+// y un Haber por el mismo monto, los dos con origenTipo VENTA_CONTADO —
+// nunca COBRO, porque calcularEsperadoCaja ya cuenta esta venta una vez
+// vía Venta.medioPago=CONTADO y un Haber con origenTipo COBRO la
+// duplicaría en el cierre de caja. Transferencia no genera ningún asiento
+// (no es una promesa de pago que haga falta rastrear, y tampoco es
+// efectivo que pase por la cuenta corriente).
+async function asentarVentaEnCuentaCorriente(
+  tx: Prisma.TransactionClient,
+  params: { ferreteriaId: string; clienteId: string; ventaId: string; fecha: Date; total: Prisma.Decimal | number; medioPago: MedioPago; usuarioId: string },
+) {
+  const { ferreteriaId, clienteId, ventaId, fecha, total, medioPago, usuarioId } = params;
+
+  if (medioPago === "CREDITO") {
+    await tx.cuentaCliente.create({
+      data: { ferreteriaId, clienteId, fecha, debe: total, haber: 0, origenTipo: "VENTA_CREDITO", origenId: ventaId, registradoPorUsuarioId: usuarioId },
+    });
+  } else if (medioPago === "CONTADO" || medioPago === "DEBITO") {
+    await tx.cuentaCliente.create({
+      data: { ferreteriaId, clienteId, fecha, debe: total, haber: 0, origenTipo: "VENTA_CONTADO", origenId: ventaId, medioPago, registradoPorUsuarioId: usuarioId },
+    });
+    await tx.cuentaCliente.create({
+      data: {
+        ferreteriaId, clienteId, fecha, debe: 0, haber: total, origenTipo: "VENTA_CONTADO", origenId: ventaId,
+        referencia: "Cobrado al momento de la venta", medioPago, registradoPorUsuarioId: usuarioId,
+      },
+    });
+  }
+}
 
 // Alta y confirmación en un solo paso: el negocio pidió sacar el estado
 // Pendiente del flujo normal (una venta se carga una sola vez, no se
@@ -16,9 +50,12 @@ export async function crearVentaConfirmada(
   usuarioId: string,
   datos: z.infer<typeof crearVentaSchema>,
 ) {
-  const lineas = datos.detalle.map((l) => ({ ...l, total: l.precio * l.cantidad * (1 - l.descuento / 100) }));
+  const lineas = datos.detalle.map((l) => {
+    const total = l.precio * l.cantidad * (1 - l.descuento / 100);
+    return { ...l, total, iva: l.tipoIva === "TOTAL" ? total * 0.22 : 0 };
+  });
   const subtotal = lineas.reduce((acc, l) => acc + l.total, 0);
-  const iva = datos.tipoIva === "TOTAL" ? subtotal * 0.22 : 0;
+  const iva = lineas.reduce((acc, l) => acc + l.iva, 0);
   const fecha = new Date(datos.fecha);
 
   const venta = await prisma.$transaction(async (tx) => {
@@ -27,7 +64,6 @@ export async function crearVentaConfirmada(
         ferreteriaId,
         clienteId: datos.clienteId,
         fecha,
-        tipoIva: datos.tipoIva,
         medioPago: datos.medioPago,
         entrega: datos.entrega,
         registradoPorUsuarioId: usuarioId,
@@ -41,6 +77,7 @@ export async function crearVentaConfirmada(
             cantidad: l.cantidad,
             precio: l.precio,
             descuento: l.descuento,
+            tipoIva: l.tipoIva,
             total: l.total,
             totalVigente: l.total,
           })),
@@ -63,20 +100,9 @@ export async function crearVentaConfirmada(
       });
     }
 
-    if (venta.medioPago === "CREDITO") {
-      await tx.cuentaCliente.create({
-        data: {
-          ferreteriaId,
-          clienteId: venta.clienteId,
-          fecha: venta.fecha,
-          debe: venta.total,
-          haber: 0,
-          origenTipo: "VENTA_CREDITO",
-          origenId: venta.id,
-          registradoPorUsuarioId: usuarioId,
-        },
-      });
-    }
+    await asentarVentaEnCuentaCorriente(tx, {
+      ferreteriaId, clienteId: venta.clienteId, ventaId: venta.id, fecha: venta.fecha, total: venta.total, medioPago: venta.medioPago, usuarioId,
+    });
 
     return venta;
   });
@@ -122,20 +148,9 @@ export async function confirmarVenta(ferreteriaId: string, ventaId: string, usua
       });
     }
 
-    if (venta.medioPago === "CREDITO") {
-      await tx.cuentaCliente.create({
-        data: {
-          ferreteriaId,
-          clienteId: venta.clienteId,
-          fecha: venta.fecha,
-          debe: venta.total,
-          haber: 0,
-          origenTipo: "VENTA_CREDITO",
-          origenId: venta.id,
-          registradoPorUsuarioId: usuarioId,
-        },
-      });
-    }
+    await asentarVentaEnCuentaCorriente(tx, {
+      ferreteriaId, clienteId: venta.clienteId, ventaId: venta.id, fecha: venta.fecha, total: venta.total, medioPago: venta.medioPago, usuarioId,
+    });
   });
 
   await auditar({ accion: "VENTA_CONFIRMA", usuarioId, ferreteriaId, entidad: "Venta", entidadId: ventaId });

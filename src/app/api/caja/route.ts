@@ -16,7 +16,9 @@ export async function POST(req: Request) {
     const cierre = await registrarCierreCaja(
       resultado.contexto.ferreteriaId,
       resultado.contexto.usuarioId,
-      new Date(parsed.data.fecha),
+      new Date(parsed.data.desde),
+      new Date(parsed.data.hasta || parsed.data.desde),
+      parsed.data.montoInicial,
       parsed.data.totalContado,
       parsed.data.observaciones,
     );

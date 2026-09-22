@@ -8,6 +8,7 @@ type Linea = {
   id: string;
   cantidad: number;
   precio: string;
+  tipoIva: "EXENTO" | "TOTAL";
   totalVigente: string;
   producto: { codigo: string; descripcion: string };
 };
@@ -16,7 +17,6 @@ type Venta = {
   fecha: Date;
   estado: "PENDIENTE" | "CONFIRMADO" | "ANULADO";
   medioPago: string;
-  tipoIva: "EXENTO" | "TOTAL";
   subtotal: string;
   iva: string;
   total: string;
@@ -36,6 +36,7 @@ const ETIQUETA_MEDIO_PAGO: Record<string, string> = {
   CONTADO: "Contado",
   CREDITO: "Crédito",
   TRANSFERENCIA: "Transferencia",
+  DEBITO: "Débito",
 };
 
 function formatoMoneda(n: string) {
@@ -110,6 +111,7 @@ export function TicketVentaClient({ venta, ferreteria }: { venta: Venta; ferrete
               <th className="py-1 text-left font-semibold">Producto</th>
               <th className="py-1 text-right font-semibold">Cant.</th>
               <th className="py-1 text-right font-semibold">Precio</th>
+              <th className="py-1 text-right font-semibold">IVA</th>
               <th className="py-1 text-right font-semibold">Total</th>
             </tr>
           </thead>
@@ -119,6 +121,7 @@ export function TicketVentaClient({ venta, ferreteria }: { venta: Venta; ferrete
                 <td className="py-1 pr-1">{l.producto.descripcion}</td>
                 <td className="py-1 text-right font-mono tabular-nums">{l.cantidad}</td>
                 <td className="py-1 text-right font-mono tabular-nums">{formatoMoneda(l.precio)}</td>
+                <td className="py-1 text-right text-gray-500">{l.tipoIva === "TOTAL" ? "22%" : "Exento"}</td>
                 <td className="py-1 text-right font-mono tabular-nums">{formatoMoneda(l.totalVigente)}</td>
               </tr>
             ))}
@@ -132,9 +135,9 @@ export function TicketVentaClient({ venta, ferreteria }: { venta: Venta; ferrete
             <span className="text-gray-500">Subtotal</span>
             <span className="font-mono tabular-nums">$ {formatoMoneda(venta.subtotal)}</span>
           </div>
-          {venta.tipoIva === "TOTAL" && (
+          {Number(venta.iva) > 0 && (
             <div className="flex justify-between">
-              <span className="text-gray-500">IVA (22%)</span>
+              <span className="text-gray-500">IVA</span>
               <span className="font-mono tabular-nums">$ {formatoMoneda(venta.iva)}</span>
             </div>
           )}

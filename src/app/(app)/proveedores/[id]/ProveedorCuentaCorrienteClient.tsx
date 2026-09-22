@@ -25,6 +25,10 @@ type Proveedor = { id: string; nombre: string; telefono: string | null };
 
 const ETIQUETA_ORIGEN: Record<string, string> = {
   COMPRA_CREDITO: "Compra a crédito",
+  // COMPRA_CONTADO cubre las dos filas del par Debe+Haber de una compra
+  // Contado/Débito -- se distinguen abajo (esDeuda) porque el mismo
+  // origenTipo etiqueta las dos.
+  COMPRA_CONTADO: "Compra contado",
   PAGO: "Pago",
   DEVOLUCION_COMPRA: "Devolución",
   ANULACION_COMPRA_CREDITO: "Anulación de compra",
@@ -32,6 +36,7 @@ const ETIQUETA_ORIGEN: Record<string, string> = {
 
 const BADGE_TIPO: Record<string, { bg: string; text: string; icon: React.ReactNode }> = {
   COMPRA_CREDITO: { bg: "bg-red-50", text: "text-red-700", icon: <TrendingDown className="h-4 w-4" /> },
+  COMPRA_CONTADO: { bg: "bg-green-50", text: "text-green-700", icon: <TrendingUp className="h-4 w-4" /> },
   PAGO: { bg: "bg-green-50", text: "text-green-700", icon: <TrendingUp className="h-4 w-4" /> },
   DEVOLUCION_COMPRA: { bg: "bg-blue-50", text: "text-blue-700", icon: <TrendingUp className="h-4 w-4" /> },
   ANULACION_COMPRA_CREDITO: { bg: "bg-gray-50", text: "text-gray-700", icon: <TrendingDown className="h-4 w-4" /> },
@@ -51,7 +56,7 @@ export function ProveedorCuentaCorrienteClient({
   const router = useRouter();
   const [monto, setMonto] = useState("");
   const [referencia, setReferencia] = useState("");
-  const [medioPago, setMedioPago] = useState<"CONTADO" | "TRANSFERENCIA">("CONTADO");
+  const [medioPago, setMedioPago] = useState<"CONTADO" | "TRANSFERENCIA" | "DEBITO">("CONTADO");
   const [error, setError] = useState<string | null>(null);
 
   async function registrarPago(e: React.FormEvent) {
@@ -143,6 +148,7 @@ export function ProveedorCuentaCorrienteClient({
                   onChange={(e) => setMedioPago(e.target.value as typeof medioPago)}
                 >
                   <option value="CONTADO">Efectivo</option>
+                  <option value="DEBITO">Débito</option>
                   <option value="TRANSFERENCIA">Transferencia</option>
                 </Select>
               </div>
@@ -181,6 +187,9 @@ export function ProveedorCuentaCorrienteClient({
                 const esDeuda = Number(m.debe) > 0;
                 const badge = BADGE_TIPO[m.origenTipo] || BADGE_TIPO.ANULACION_COMPRA_CREDITO;
                 const monto = esDeuda ? m.debe : m.haber;
+                const etiqueta = m.origenTipo === "COMPRA_CONTADO"
+                  ? (esDeuda ? "Compra contado" : "Pagado en el acto")
+                  : (ETIQUETA_ORIGEN[m.origenTipo] ?? m.origenTipo);
 
                 return (
                   <div
@@ -193,7 +202,7 @@ export function ProveedorCuentaCorrienteClient({
                       </div>
 
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-foreground">{ETIQUETA_ORIGEN[m.origenTipo] ?? m.origenTipo}</p>
+                        <p className="font-medium text-foreground">{etiqueta}</p>
                         <p className="text-sm text-muted-foreground">
                           {formatearFecha(m.fecha)}
                           {m.referencia && ` • ${m.referencia}`}

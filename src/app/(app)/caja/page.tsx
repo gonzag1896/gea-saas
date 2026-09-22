@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
-import { prisma } from "@/lib/db";
 import { obtenerContextoTenant } from "@/lib/tenant";
 import { tienePermiso } from "@/lib/permisos";
-import { calcularEsperadoCaja, listarCierres } from "@/lib/caja";
+import { calcularEsperadoCaja, listarCierres, fechaCubiertaPorCierre } from "@/lib/caja";
 import { Alert } from "@/components/ui/Alert";
 import { CajaClient } from "./CajaClient";
 
@@ -20,20 +19,21 @@ export default async function CajaPage() {
 
   const { ferreteriaId } = contexto;
   const hoy = new Date();
-  const inicioHoy = new Date(hoy.getFullYear(), hoy.getMonth(), hoy.getDate());
 
-  const [esperado, cierreHoy, cierres] = await Promise.all([
+  const [esperado, hoyCubierta, cierres] = await Promise.all([
     calcularEsperadoCaja(ferreteriaId, hoy),
-    prisma.cierreCaja.findUnique({ where: { ferreteriaId_fecha: { ferreteriaId, fecha: inicioHoy } } }),
+    fechaCubiertaPorCierre(ferreteriaId, hoy),
     listarCierres(ferreteriaId),
   ]);
 
   return (
     <CajaClient
       esperado={esperado}
-      yaCerradaHoy={!!cierreHoy}
-      cierres={cierres.map((c) => ({ ...c, fecha: c.fecha.toISOString() }))}
+      yaCerradaHoy={hoyCubierta}
+      hoy={hoy.toISOString().slice(0, 10)}
+      cierres={cierres.map((c) => ({ ...c, fecha: c.fecha.toISOString(), fechaHasta: c.fechaHasta.toISOString() }))}
       puedeCerrar={tienePermiso(contexto.rol, "caja", "crear")}
+      puedeEditar={tienePermiso(contexto.rol, "caja", "modificar")}
     />
   );
 }

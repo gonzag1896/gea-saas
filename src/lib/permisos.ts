@@ -46,7 +46,10 @@ const MATRIZ: Record<Modulo, Record<RolFerreteria, Accion[]>> = {
   pagosProveedor: { DUENO: ["ver", "crear"], CAJERO: [], DEPOSITO: [] },
   // Igual criterio que Cobros: quien maneja el mostrador (Dueño y Cajero)
   // es quien cierra la caja. Depósito no maneja efectivo.
-  caja: { DUENO: ["ver", "crear"], CAJERO: ["ver", "crear"], DEPOSITO: [] },
+  // "modificar" es exclusivo de Dueño: corregir un cierre ya cargado
+  // (fondo inicial, monto contado) reescribe historial de caja, no es
+  // una operación de mostrador como cerrar el día.
+  caja: { DUENO: ["ver", "crear", "modificar"], CAJERO: ["ver", "crear"], DEPOSITO: [] },
   clientes: { DUENO: ["ver", "crear", "modificar", "eliminar"], CAJERO: ["ver", "crear"], DEPOSITO: [] },
   proveedores: { DUENO: ["ver", "crear", "modificar", "eliminar"], CAJERO: [], DEPOSITO: ["ver", "crear"] },
   productos: { DUENO: ["ver", "crear", "modificar", "eliminar"], CAJERO: ["ver"], DEPOSITO: ["ver", "crear", "modificar"] },

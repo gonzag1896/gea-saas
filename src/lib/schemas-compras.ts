@@ -15,7 +15,7 @@ export const crearCompraSchema = z.object({
   numeroFactura: z.string().optional(),
   facturaPdfUrl: z.string().url().optional().or(z.literal("")),
   observaciones: z.string().optional(),
-  medioPago: z.enum(["CONTADO", "CREDITO"]).default("CONTADO"),
+  medioPago: z.enum(["CONTADO", "CREDITO", "DEBITO"]).default("CONTADO"),
   detalle: z.array(lineaCompraSchema).min(1, "La compra necesita al menos una línea."),
 });
 

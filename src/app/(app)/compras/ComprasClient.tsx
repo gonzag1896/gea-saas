@@ -18,7 +18,7 @@ import { cn } from "@/lib/cn";
 import { formatearFecha } from "@/lib/fecha";
 
 type Estado = "PENDIENTE" | "CONFIRMADO" | "ANULADO";
-type MedioPago = "CONTADO" | "CREDITO" | "TRANSFERENCIA";
+type MedioPago = "CONTADO" | "CREDITO" | "TRANSFERENCIA" | "DEBITO";
 type Compra = {
   id: string;
   fecha: Date;
@@ -55,6 +55,7 @@ const MEDIO_PAGO_INFO: Record<MedioPago, { label: string; cls: string }> = {
   CONTADO: { label: "Contado", cls: "bg-green-50 text-green-700" },
   CREDITO: { label: "Crédito", cls: "bg-orange-50 text-orange-700" },
   TRANSFERENCIA: { label: "Transferencia", cls: "bg-blue-50 text-blue-700" },
+  DEBITO: { label: "Débito", cls: "bg-purple-50 text-purple-700" },
 };
 
 function MedioPagoTag({ medioPago }: { medioPago: MedioPago }) {

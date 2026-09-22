@@ -1,9 +1,37 @@
 import { prisma } from "@/lib/db";
+import type { Prisma, MedioPago } from "@prisma/client";
 import type { crearCompraSchema } from "@/lib/schemas-compras";
 import { aplicarMovimientoStock } from "@/lib/stock";
 import { auditar } from "@/lib/auditoria";
 import { EntidadNoEncontradaError, EstadoInvalidoError, CantidadInvalidaError } from "@/lib/errores-dominio";
 import type { z } from "zod";
+
+// Espejo de asentarVentaEnCuentaCorriente (@/lib/ventas) del lado de
+// proveedores. Mismo motivo para usar COMPRA_CONTADO en las dos filas del
+// par en vez de PAGO: evitar que el cierre de caja cuente esta compra dos
+// veces (Compra.medioPago=CONTADO ya la suma una vez).
+async function asentarCompraEnCuentaCorriente(
+  tx: Prisma.TransactionClient,
+  params: { ferreteriaId: string; proveedorId: string; compraId: string; fecha: Date; total: Prisma.Decimal | number; medioPago: MedioPago; usuarioId: string },
+) {
+  const { ferreteriaId, proveedorId, compraId, fecha, total, medioPago, usuarioId } = params;
+
+  if (medioPago === "CREDITO") {
+    await tx.cuentaProveedor.create({
+      data: { ferreteriaId, proveedorId, fecha, debe: total, haber: 0, origenTipo: "COMPRA_CREDITO", origenId: compraId, registradoPorUsuarioId: usuarioId },
+    });
+  } else if (medioPago === "CONTADO" || medioPago === "DEBITO") {
+    await tx.cuentaProveedor.create({
+      data: { ferreteriaId, proveedorId, fecha, debe: total, haber: 0, origenTipo: "COMPRA_CONTADO", origenId: compraId, medioPago, registradoPorUsuarioId: usuarioId },
+    });
+    await tx.cuentaProveedor.create({
+      data: {
+        ferreteriaId, proveedorId, fecha, debe: 0, haber: total, origenTipo: "COMPRA_CONTADO", origenId: compraId,
+        referencia: "Pagado al momento de la compra", medioPago, registradoPorUsuarioId: usuarioId,
+      },
+    });
+  }
+}
 
 // Alta y confirmación en un solo paso: mismo criterio que
 // crearVentaConfirmada() en @/lib/ventas — el negocio pidió sacar el
@@ -70,20 +98,9 @@ export async function crearCompraConfirmada(
       });
     }
 
-    if (compra.medioPago === "CREDITO") {
-      await tx.cuentaProveedor.create({
-        data: {
-          ferreteriaId,
-          proveedorId: compra.proveedorId,
-          fecha: compra.fecha,
-          debe: compra.total,
-          haber: 0,
-          origenTipo: "COMPRA_CREDITO",
-          origenId: compra.id,
-          registradoPorUsuarioId: usuarioId,
-        },
-      });
-    }
+    await asentarCompraEnCuentaCorriente(tx, {
+      ferreteriaId, proveedorId: compra.proveedorId, compraId: compra.id, fecha: compra.fecha, total: compra.total, medioPago: compra.medioPago, usuarioId,
+    });
 
     return compra;
   });

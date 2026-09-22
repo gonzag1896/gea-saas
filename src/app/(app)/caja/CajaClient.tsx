@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Wallet, ShoppingCart, CreditCard, CheckCircle2, TrendingUp, TrendingDown, Info, ChevronRight,
-  ChevronLeft, ArrowUpDown,
+  ChevronLeft, ArrowUpDown, Pencil,
 } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
@@ -14,13 +14,16 @@ import { FormField } from "@/components/ui/FormField";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Modal } from "@/components/ui/Modal";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { cn } from "@/lib/cn";
-import { formatearFecha } from "@/lib/fecha";
 
 type Esperado = { totalVentasContado: number; totalCobrosContado: number; totalEsperado: number };
 type Cierre = {
   id: string;
   fecha: string;
+  fechaHasta: string;
+  montoInicial: number;
   totalVentasContado: number;
   totalCobrosContado: number;
   totalEsperado: number;
@@ -86,18 +89,34 @@ function DiferenciaPill({ diferencia }: { diferencia: number }) {
   );
 }
 
+function formatearRango(fecha: string, fechaHasta: string) {
+  const f1 = new Date(fecha).toLocaleDateString("es-UY", { timeZone: "UTC" });
+  if (fecha === fechaHasta) return f1;
+  const f2 = new Date(fechaHasta).toLocaleDateString("es-UY", { timeZone: "UTC" });
+  return `${f1} – ${f2}`;
+}
+
 export function CajaClient({
   esperado,
   yaCerradaHoy,
+  hoy,
   cierres,
   puedeCerrar,
+  puedeEditar,
 }: {
   esperado: Esperado;
   yaCerradaHoy: boolean;
+  hoy: string;
   cierres: Cierre[];
   puedeCerrar: boolean;
+  puedeEditar: boolean;
 }) {
   const router = useRouter();
+  const [desde, setDesde] = useState(hoy);
+  const [hasta, setHasta] = useState(hoy);
+  const [esperadoRango, setEsperadoRango] = useState<Esperado>(esperado);
+  const [cargandoEsperado, setCargandoEsperado] = useState(false);
+  const [montoInicial, setMontoInicial] = useState("0");
   const [totalContado, setTotalContado] = useState("");
   const [observaciones, setObservaciones] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -106,8 +125,27 @@ export function CajaClient({
   const [sortKey, setSortKey] = useState<SortKey>("fecha");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [page, setPage] = useState(1);
+  const [aEditar, setAEditar] = useState<Cierre | null>(null);
 
-  const diferenciaPreview = totalContado ? Number(totalContado) - esperado.totalEsperado : null;
+  // El rango por defecto (hoy-hoy) ya viene calculado del servidor — si el
+  // usuario lo cambia, se recalcula el esperado para ese rango sin
+  // recargar toda la pantalla.
+  useEffect(() => {
+    if (desde === hoy && hasta === hoy) {
+      setEsperadoRango(esperado);
+      return;
+    }
+    let cancelado = false;
+    setCargandoEsperado(true);
+    fetch(`/api/caja/esperado?desde=${desde}&hasta=${hasta}`)
+      .then((r) => r.json())
+      .then((data) => { if (!cancelado) setEsperadoRango(data); })
+      .finally(() => { if (!cancelado) setCargandoEsperado(false); });
+    return () => { cancelado = true; };
+  }, [desde, hasta, hoy, esperado]);
+
+  const totalEsperadoConFondo = (Number(montoInicial) || 0) + esperadoRango.totalEsperado;
+  const diferenciaPreview = totalContado ? Number(totalContado) - totalEsperadoConFondo : null;
 
   const cierresOrdenados = useMemo(() => {
     const copia = [...cierres];
@@ -154,7 +192,9 @@ export function CajaClient({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        fecha: new Date().toISOString(),
+        desde: new Date(desde).toISOString(),
+        hasta: new Date(hasta).toISOString(),
+        montoInicial: Number(montoInicial) || 0,
         totalContado: Number(totalContado),
         observaciones: observaciones || undefined,
       }),
@@ -162,11 +202,13 @@ export function CajaClient({
     setGuardando(false);
     const data = await res.json();
     if (!res.ok) return setError(data.error);
-    setCierreHoy({ diferencia: Number(data.cierre.diferencia), totalContado: Number(data.cierre.totalContado) });
+    if (desde === hoy && hasta === hoy) {
+      setCierreHoy({ diferencia: Number(data.cierre.diferencia), totalContado: Number(data.cierre.totalContado) });
+    }
     router.refresh();
   }
 
-  const yaCerrada = yaCerradaHoy || cierreHoy !== null;
+  const yaCerrada = (desde === hoy && hasta === hoy) && (yaCerradaHoy || cierreHoy !== null);
 
   return (
     <div className="flex flex-col gap-6">
@@ -182,24 +224,49 @@ export function CajaClient({
           icon={Wallet}
           label="Total esperado en caja"
           valor={`$ ${formatoMoneda(esperado.totalEsperado)}`}
-          sub="Ventas Contado + Cobros Contado"
+          sub="Ventas Contado + Cobros Contado (sin fondo inicial)"
           tono="success"
         />
       </div>
 
       <p className="flex items-start gap-2 text-xs text-muted-foreground">
         <Info className="h-4 w-4 shrink-0 mt-0.5" />
-        Solo entra a este cálculo lo cobrado en efectivo (Contado). Las ventas a crédito o por transferencia no mueven la caja física, aunque sí aparecen en Ventas y Cuenta Corriente.
+        Solo entra a este cálculo lo cobrado en efectivo (Contado). Débito, crédito y transferencia no mueven la caja física — el banco las acredita aparte — aunque sí aparecen en Ventas y Cuenta Corriente.
       </p>
 
       {puedeCerrar && !yaCerrada && (
         <Card className="max-w-md">
-          <h3 className="mb-3 text-sm font-semibold text-foreground">Cerrar caja de hoy</h3>
+          <h3 className="mb-3 text-sm font-semibold text-foreground">Cerrar caja</h3>
           <form onSubmit={cerrarCaja} className="flex flex-col gap-3">
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Desde" required>
+                <Input type="date" value={desde} onChange={(e) => { setDesde(e.target.value); if (e.target.value > hasta) setHasta(e.target.value); }} required />
+              </FormField>
+              <FormField label="Hasta" required>
+                <Input type="date" value={hasta} min={desde} onChange={(e) => setHasta(e.target.value)} required />
+              </FormField>
+            </div>
+            {hasta !== desde && (
+              <p className="text-xs text-muted-foreground">
+                Vas a cerrar varios días de una vez ({formatearRango(desde, hasta)}). Usalo si la caja quedó sin cerrar un tramo.
+              </p>
+            )}
+
+            <FormField label="Fondo inicial de caja" required>
+              <Input type="number" step="0.01" min="0" value={montoInicial} onChange={(e) => setMontoInicial(e.target.value)} placeholder="$" required />
+            </FormField>
+            <p className="-mt-2 text-xs text-muted-foreground">Efectivo con el que arrancó la jornada (vuelto), antes de la primera venta.</p>
+
             <FormField label="Monto contado físicamente" required>
               <Input type="number" step="0.01" min="0" value={totalContado} onChange={(e) => setTotalContado(e.target.value)} placeholder="$" required />
             </FormField>
+
+            <p className="text-xs text-muted-foreground">
+              Esperado: <span className="font-mono font-medium text-foreground">$ {formatoMoneda(totalEsperadoConFondo)}</span>
+              {cargandoEsperado && " (recalculando…)"}
+            </p>
             {diferenciaPreview !== null && <DiferenciaPill diferencia={diferenciaPreview} />}
+
             <FormField label="Observaciones">
               <Input value={observaciones} onChange={(e) => setObservaciones(e.target.value)} placeholder="Opcional" />
             </FormField>
@@ -230,53 +297,73 @@ export function CajaClient({
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <table className="w-full table-fixed">
                 <colgroup>
+                  <col style={{ width: "16%" }} />
+                  <col style={{ width: "12%" }} />
                   <col style={{ width: "14%" }} />
-                  <col style={{ width: "18%" }} />
-                  <col style={{ width: "18%" }} />
-                  <col style={{ width: "26%" }} />
-                  <col style={{ width: "24%" }} />
+                  <col style={{ width: "14%" }} />
+                  <col style={{ width: "20%" }} />
+                  <col style={{ width: "16%" }} />
+                  <col style={{ width: "8%" }} />
                 </colgroup>
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    <th className="px-4 py-3 text-left">
+                    <th className="px-3 py-3 text-left">
                       <SortHeader label="Fecha" sortBy="fecha" />
                     </th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-foreground">
+                    <th className="px-3 py-3 text-right text-sm font-semibold text-foreground">
+                      Fondo
+                    </th>
+                    <th className="px-3 py-3 text-right text-sm font-semibold text-foreground">
                       Esperado
                     </th>
-                    <th className="px-4 py-3 text-right text-sm font-semibold text-foreground">
+                    <th className="px-3 py-3 text-right text-sm font-semibold text-foreground">
                       Contado
                     </th>
-                    <th className="px-4 py-3 text-center">
+                    <th className="px-3 py-3 text-center">
                       <div className="flex items-center justify-center">
                         <SortHeader label="Diferencia" sortBy="diferencia" />
                       </div>
                     </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-foreground">
+                    <th className="px-3 py-3 text-left text-sm font-semibold text-foreground">
                       Observaciones
                     </th>
+                    <th className="px-3 py-3" />
                   </tr>
                 </thead>
 
                 <tbody className="divide-y divide-gray-200">
                   {cierresPagina.map((c) => (
                     <tr key={c.id}>
-                      <td className="px-4 py-3 text-sm text-muted-foreground">
-                        {formatearFecha(c.fecha)}
+                      <td className="px-3 py-3 text-sm text-muted-foreground">
+                        {formatearRango(c.fecha, c.fechaHasta)}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono tabular-nums text-sm text-foreground">
+                      <td className="px-3 py-3 text-right font-mono tabular-nums text-sm text-muted-foreground">
+                        $ {formatoMoneda(c.montoInicial)}
+                      </td>
+                      <td className="px-3 py-3 text-right font-mono tabular-nums text-sm text-foreground">
                         $ {formatoMoneda(c.totalEsperado)}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono tabular-nums text-sm text-foreground">
+                      <td className="px-3 py-3 text-right font-mono tabular-nums text-sm text-foreground">
                         $ {formatoMoneda(c.totalContado)}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <div className="flex items-center justify-center">
                           <DiferenciaPill diferencia={c.diferencia} />
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-muted-foreground truncate">
+                      <td className="px-3 py-3 text-sm text-muted-foreground truncate">
                         {c.observaciones ?? "—"}
+                      </td>
+                      <td className="px-3 py-3">
+                        {puedeEditar && (
+                          <div className="flex items-center justify-end">
+                            <Tooltip label="Editar" side="left">
+                              <Button variant="icon" className="h-8 w-8" aria-label="Editar cierre" onClick={() => setAEditar(c)}>
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                            </Tooltip>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -300,6 +387,82 @@ export function CajaClient({
           </>
         )}
       </div>
+
+      <EditarCierreModal cierre={aEditar} onClose={() => setAEditar(null)} onSaved={() => { setAEditar(null); router.refresh(); }} />
     </div>
+  );
+}
+
+function EditarCierreModal({
+  cierre,
+  onClose,
+  onSaved,
+}: {
+  cierre: Cierre | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [montoInicial, setMontoInicial] = useState("0");
+  const [totalContado, setTotalContado] = useState("0");
+  const [observaciones, setObservaciones] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [guardando, setGuardando] = useState(false);
+
+  useEffect(() => {
+    if (!cierre) return;
+    setMontoInicial(String(cierre.montoInicial));
+    setTotalContado(String(cierre.totalContado));
+    setObservaciones(cierre.observaciones ?? "");
+    setError(null);
+  }, [cierre]);
+
+  async function guardar(e: React.FormEvent) {
+    e.preventDefault();
+    if (!cierre) return;
+    setError(null);
+    setGuardando(true);
+    const res = await fetch(`/api/caja/${cierre.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        montoInicial: Number(montoInicial) || 0,
+        totalContado: Number(totalContado) || 0,
+        observaciones: observaciones || undefined,
+      }),
+    });
+    setGuardando(false);
+    if (!res.ok) return setError((await res.json()).error);
+    onSaved();
+  }
+
+  const nuevoEsperado = cierre ? (Number(montoInicial) || 0) + cierre.totalVentasContado + cierre.totalCobrosContado : 0;
+  const nuevaDiferencia = (Number(totalContado) || 0) - nuevoEsperado;
+
+  return (
+    <Modal open={cierre !== null} onClose={onClose} title={cierre ? `Editar cierre — ${formatearRango(cierre.fecha, cierre.fechaHasta)}` : ""}>
+      <form onSubmit={guardar} className="flex flex-col gap-3">
+        <p className="text-xs text-muted-foreground">
+          Las ventas y cobros del período no se recalculan — solo se corrige el fondo inicial, el monto contado y las observaciones.
+        </p>
+        <FormField label="Fondo inicial" required>
+          <Input type="number" step="0.01" min="0" value={montoInicial} onChange={(e) => setMontoInicial(e.target.value)} required />
+        </FormField>
+        <FormField label="Monto contado físicamente" required>
+          <Input type="number" step="0.01" min="0" value={totalContado} onChange={(e) => setTotalContado(e.target.value)} required />
+        </FormField>
+        <p className="text-xs text-muted-foreground">
+          Esperado: <span className="font-mono font-medium text-foreground">$ {formatoMoneda(nuevoEsperado)}</span>
+        </p>
+        <DiferenciaPill diferencia={nuevaDiferencia} />
+        <FormField label="Observaciones">
+          <Input value={observaciones} onChange={(e) => setObservaciones(e.target.value)} placeholder="Opcional" />
+        </FormField>
+        {error && <Alert>{error}</Alert>}
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose} disabled={guardando}>Cancelar</Button>
+          <Button type="submit" loading={guardando}>Guardar cambios</Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

@@ -15,12 +15,13 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ProductoAutocomplete } from "@/components/ui/ProductoAutocomplete";
 
 type Opcion = { id: string; nombre?: string; codigo?: string; codigoBarras?: string | null; descripcion?: string; moneda?: "UYU" | "USD"; precioVenta?: string; listaPrecioId?: string | null; stockActual?: number };
-type Linea = { productoId: string; cantidad: string; precio: string; descuento: string; moneda: "UYU" | "USD" };
+type Linea = { productoId: string; cantidad: string; precio: string; descuento: string; tipoIva: "EXENTO" | "TOTAL"; moneda: "UYU" | "USD" };
 
-const ETIQUETA_MEDIO_PAGO: Record<"CONTADO" | "CREDITO" | "TRANSFERENCIA", string> = {
+const ETIQUETA_MEDIO_PAGO: Record<"CONTADO" | "CREDITO" | "TRANSFERENCIA" | "DEBITO", string> = {
   CONTADO: "Contado",
   CREDITO: "Crédito (cuenta corriente)",
   TRANSFERENCIA: "Transferencia",
+  DEBITO: "Débito",
 };
 
 function formatoMoneda(n: number) {
@@ -42,11 +43,10 @@ export function VentaFormClient({
   const cotizacion = cotizacionDolar ? Number(cotizacionDolar) : null;
   const [clienteId, setClienteId] = useState(clientes[0]?.id ?? "");
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
-  const [medioPago, setMedioPago] = useState<"CONTADO" | "CREDITO" | "TRANSFERENCIA">("CONTADO");
-  const [tipoIva, setTipoIva] = useState<"EXENTO" | "TOTAL">("EXENTO");
+  const [medioPago, setMedioPago] = useState<"CONTADO" | "CREDITO" | "TRANSFERENCIA" | "DEBITO">("CONTADO");
   const [lineas, setLineas] = useState<Linea[]>([]);
   const [lineaActual, setLineaActual] = useState<Linea>({
-    productoId: productos[0]?.id ?? "", cantidad: "1", precio: "", descuento: "0", moneda: productos[0]?.moneda ?? "UYU",
+    productoId: productos[0]?.id ?? "", cantidad: "1", precio: "", descuento: "0", tipoIva: "EXENTO", moneda: productos[0]?.moneda ?? "UYU",
   });
   const [codigoEscaneado, setCodigoEscaneado] = useState("");
   const [errorEscaneo, setErrorEscaneo] = useState<string | null>(null);
@@ -95,7 +95,7 @@ export function VentaFormClient({
     }
 
     setErrorEscaneo(null);
-    setLineas((prev) => [...prev, { productoId: producto.id, cantidad: "1", precio: precioSugerido(producto.id) || "0", descuento: "0", moneda: producto.moneda ?? "UYU" }]);
+    setLineas((prev) => [...prev, { productoId: producto.id, cantidad: "1", precio: precioSugerido(producto.id) || "0", descuento: "0", tipoIva: "EXENTO", moneda: producto.moneda ?? "UYU" }]);
     setCodigoEscaneado("");
     inputEscaneoRef.current?.focus();
   }
@@ -124,7 +124,6 @@ export function VentaFormClient({
       body: JSON.stringify({
         clienteId,
         fecha: new Date(fecha).toISOString(),
-        tipoIva,
         medioPago,
         // El backend siempre guarda en pesos — una línea en dólares se
         // convierte acá con la cotización configurada antes de mandarla.
@@ -133,6 +132,7 @@ export function VentaFormClient({
           cantidad: Number(l.cantidad),
           precio: l.moneda === "USD" ? Number(l.precio) * (cotizacion ?? 0) : Number(l.precio),
           descuento: Number(l.descuento),
+          tipoIva: l.tipoIva,
         })),
       }),
     });
@@ -158,8 +158,9 @@ export function VentaFormClient({
   }
 
   const subtotal = lineas.reduce((acc, l) => acc + totalLineaPesos(l), 0);
-  const iva = tipoIva === "TOTAL" ? subtotal * 0.22 : 0;
+  const iva = lineas.reduce((acc, l) => acc + (l.tipoIva === "TOTAL" ? totalLineaPesos(l) * 0.22 : 0), 0);
   const total = subtotal + iva;
+  const hayLineaConIva = lineas.some((l) => l.tipoIva === "TOTAL");
 
   if (clientes.length === 0 || productos.length === 0) {
     return (
@@ -177,7 +178,7 @@ export function VentaFormClient({
       <form onSubmit={crearVenta} className="flex flex-col gap-6">
         <Card className="max-w-3xl">
           <h3 className="mb-4 text-sm font-semibold text-foreground">Datos de la venta</h3>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <FormField label="Cliente" required>
               <Select
                 value={clienteId}
@@ -200,12 +201,6 @@ export function VentaFormClient({
             <FormField label="Medio de pago" required>
               <Select value={medioPago} onChange={(e) => setMedioPago(e.target.value as typeof medioPago)}>
                 {Object.entries(ETIQUETA_MEDIO_PAGO).map(([valor, etiqueta]) => <option key={valor} value={valor}>{etiqueta}</option>)}
-              </Select>
-            </FormField>
-            <FormField label="IVA" required>
-              <Select value={tipoIva} onChange={(e) => setTipoIva(e.target.value as typeof tipoIva)}>
-                <option value="EXENTO">Exento</option>
-                <option value="TOTAL">22%</option>
               </Select>
             </FormField>
           </div>
@@ -259,7 +254,7 @@ export function VentaFormClient({
                 <a href="/configuracion" className="underline underline-offset-2">Configuración</a> para poder agregarlo.
               </p>
             )}
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-end">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-[1fr_1fr_1fr_1fr_auto] sm:items-end">
               <FormField label="Cantidad">
                 <Input type="number" min="1" value={lineaActual.cantidad} onChange={(e) => setLineaActual({ ...lineaActual, cantidad: e.target.value })} />
               </FormField>
@@ -268,6 +263,12 @@ export function VentaFormClient({
               </FormField>
               <FormField label="Descuento %">
                 <Input type="number" step="0.01" min="0" max="100" value={lineaActual.descuento} onChange={(e) => setLineaActual({ ...lineaActual, descuento: e.target.value })} placeholder="%" />
+              </FormField>
+              <FormField label="IVA">
+                <Select value={lineaActual.tipoIva} onChange={(e) => setLineaActual({ ...lineaActual, tipoIva: e.target.value as "EXENTO" | "TOTAL" })}>
+                  <option value="EXENTO">Exento</option>
+                  <option value="TOTAL">22%</option>
+                </Select>
               </FormField>
               <Button type="button" variant="secondary" onClick={agregarLinea} className="h-9" disabled={lineaActual.moneda === "USD" && !cotizacion}>
                 <Plus className="h-4 w-4" /> Agregar
@@ -287,6 +288,7 @@ export function VentaFormClient({
                       <Table.HeadCell>Cantidad</Table.HeadCell>
                       <Table.HeadCell>Precio unitario</Table.HeadCell>
                       <Table.HeadCell>Descuento %</Table.HeadCell>
+                      <Table.HeadCell>IVA</Table.HeadCell>
                       <Table.HeadCell>Subtotal</Table.HeadCell>
                       <Table.HeadCell />
                     </Table.Row>
@@ -319,6 +321,16 @@ export function VentaFormClient({
                             className="w-20"
                           />
                         </Table.Cell>
+                        <Table.Cell>
+                          <Select
+                            value={l.tipoIva}
+                            onChange={(e) => actualizarLinea(i, { tipoIva: e.target.value as "EXENTO" | "TOTAL" })}
+                            className="w-24"
+                          >
+                            <option value="EXENTO">Exento</option>
+                            <option value="TOTAL">22%</option>
+                          </Select>
+                        </Table.Cell>
                         <Table.Cell className="font-mono tabular-nums">
                           $ {formatoMoneda(totalLineaPesos(l))}
                           {l.moneda === "USD" && <div className="text-xs font-normal text-muted-foreground">US$ {formatoMoneda(totalLinea(l))}</div>}
@@ -333,9 +345,9 @@ export function VentaFormClient({
                   </tbody>
                 </Table>
                 <p className="mt-3 text-right text-sm text-muted-foreground">
-                  Subtotal{tipoIva === "TOTAL" ? " sin IVA" : ""}: <span className="font-mono font-semibold tabular-nums text-foreground">$ {formatoMoneda(subtotal)}</span>
-                  {tipoIva === "TOTAL" && (
-                    <> · IVA (22%): <span className="font-mono font-semibold tabular-nums text-foreground">$ {formatoMoneda(iva)}</span></>
+                  Subtotal{hayLineaConIva ? " sin IVA" : ""}: <span className="font-mono font-semibold tabular-nums text-foreground">$ {formatoMoneda(subtotal)}</span>
+                  {hayLineaConIva && (
+                    <> · IVA: <span className="font-mono font-semibold tabular-nums text-foreground">$ {formatoMoneda(iva)}</span></>
                   )}
                   {" · "}
                   <span className="font-semibold text-foreground">Total: <span className="font-mono tabular-nums">$ {formatoMoneda(total)}</span></span>

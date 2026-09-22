@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { prisma } from "@/lib/db";
 import { crearFerreteriaConUsuario, borrarFixture } from "@/lib/test-fixtures";
-import { calcularEsperadoCaja, registrarCierreCaja } from "@/lib/caja";
+import { calcularEsperadoCaja, registrarCierreCaja, actualizarCierreCaja } from "@/lib/caja";
 import { registrarCobro } from "@/lib/cuenta-corriente";
 import { EstadoInvalidoError } from "@/lib/errores-dominio";
 
@@ -58,11 +58,26 @@ describe("caja — esperado y cierre diario", () => {
     expect(esperado.totalEsperado).toBe(1200);
   });
 
-  it("registrarCierreCaja calcula la diferencia y bloquea un segundo cierre el mismo día", async () => {
-    const cierre = await registrarCierreCaja(ferreteria.id, dueno.id, hoy, 1150, "Faltaron $50");
-    expect(Number(cierre.totalEsperado)).toBe(1200);
+  it("registrarCierreCaja suma el fondo inicial al esperado, calcula la diferencia y bloquea un segundo cierre que se solape", async () => {
+    const cierre = await registrarCierreCaja(ferreteria.id, dueno.id, hoy, hoy, 100, 1250, "Faltaron $50");
+    expect(Number(cierre.totalEsperado)).toBe(1300); // 100 de fondo + 1200 del día
     expect(Number(cierre.diferencia)).toBe(-50);
 
-    await expect(registrarCierreCaja(ferreteria.id, dueno.id, hoy, 1200, undefined)).rejects.toThrow(EstadoInvalidoError);
+    await expect(registrarCierreCaja(ferreteria.id, dueno.id, hoy, hoy, 0, 1200, undefined)).rejects.toThrow(EstadoInvalidoError);
+
+    const editado = await actualizarCierreCaja(ferreteria.id, cierre.id, dueno.id, { montoInicial: 0, totalContado: 1200 });
+    expect(Number(editado.totalEsperado)).toBe(1200); // sin fondo inicial
+    expect(Number(editado.diferencia)).toBe(0);
+  });
+
+  it("registrarCierreCaja acepta un rango de varios días y lo bloquea si se solapa con uno ya cerrado", async () => {
+    const antier = new Date(hoy.getTime() - 2 * 24 * 60 * 60 * 1000);
+    const ayer = new Date(hoy.getTime() - 24 * 60 * 60 * 1000);
+
+    const cierre = await registrarCierreCaja(ferreteria.id, dueno.id, antier, ayer, 0, 0, "Cierre de 2 días atrasado");
+    expect(cierre.fecha.getTime()).not.toBe(cierre.fechaHasta.getTime());
+
+    // "ayer" ya quedó cubierto por el cierre de arriba (antier→ayer).
+    await expect(registrarCierreCaja(ferreteria.id, dueno.id, ayer, ayer, 0, 0, undefined)).rejects.toThrow(EstadoInvalidoError);
   });
 });

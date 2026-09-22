@@ -80,11 +80,16 @@ describe("ventas — confirmar, anular, devolución, cuenta corriente", () => {
     await expect(confirmarVenta(ferreteria.id, venta.id, dueno.id)).rejects.toThrow(EstadoInvalidoError);
   });
 
-  it("una venta CONTADO confirmada no genera ningún asiento en cuenta corriente", async () => {
-    const venta = await crearVentaPendiente(2, 50, "CONTADO");
+  it("una venta CONTADO confirmada queda asentada en cuenta corriente como Debe+Haber (saldo neto sin cambios)", async () => {
+    const venta = await crearVentaPendiente(2, 50, "CONTADO"); // total 100
     await confirmarVenta(ferreteria.id, venta.id, dueno.id);
     const asientos = await prisma.cuentaCliente.findMany({ where: { origenId: venta.id } });
-    expect(asientos).toEqual([]);
+    expect(asientos).toHaveLength(2);
+    expect(asientos.every((a) => a.origenTipo === "VENTA_CONTADO")).toBe(true);
+    const totalDebe = asientos.reduce((acc, a) => acc + Number(a.debe), 0);
+    const totalHaber = asientos.reduce((acc, a) => acc + Number(a.haber), 0);
+    expect(totalDebe).toBe(100);
+    expect(totalHaber).toBe(100);
   });
 
   it("una venta CREDITO confirmada genera un Debe por el total, y anularla genera el Haber que la cancela", async () => {
@@ -155,10 +160,9 @@ describe("ventas — confirmar, anular, devolución, cuenta corriente", () => {
     const venta = await crearVentaConfirmada(ferreteria.id, dueno.id, {
       clienteId,
       fecha: new Date().toISOString(),
-      tipoIva: "EXENTO",
       medioPago: "CONTADO",
       entrega: 0,
-      detalle: [{ productoId, cantidad: 5, precio: 100, descuento: 0 }],
+      detalle: [{ productoId, cantidad: 5, precio: 100, descuento: 0 , tipoIva: "EXENTO" }],
     });
 
     expect(venta.estado).toBe("CONFIRMADO");
@@ -172,10 +176,9 @@ describe("ventas — confirmar, anular, devolución, cuenta corriente", () => {
     const venta = await crearVentaConfirmada(ferreteria.id, dueno.id, {
       clienteId,
       fecha: new Date().toISOString(),
-      tipoIva: "EXENTO",
       medioPago: "CONTADO",
       entrega: 0,
-      detalle: [{ productoId, cantidad, precio: 100, descuento: 0 }],
+      detalle: [{ productoId, cantidad, precio: 100, descuento: 0 , tipoIva: "EXENTO" }],
     });
 
     expect(venta.estado).toBe("CONFIRMADO");
@@ -187,10 +190,9 @@ describe("ventas — confirmar, anular, devolución, cuenta corriente", () => {
     const venta = await crearVentaConfirmada(ferreteria.id, dueno.id, {
       clienteId,
       fecha: new Date().toISOString(),
-      tipoIva: "EXENTO",
       medioPago: "CONTADO",
       entrega: 0,
-      detalle: [{ productoId, cantidad: 4, precio: 100, descuento: 25 }],
+      detalle: [{ productoId, cantidad: 4, precio: 100, descuento: 25 , tipoIva: "EXENTO" }],
     });
 
     expect(Number(venta.total)).toBe(300);

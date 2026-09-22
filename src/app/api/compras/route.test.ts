@@ -51,6 +51,7 @@ describe("permisos por rol — /api/compras", () => {
   });
 
   afterAll(async () => {
+    await prisma.cuentaProveedor.deleteMany({ where: { ferreteriaId: ferreteria.id } });
     await prisma.movimientoStock.deleteMany({ where: { ferreteriaId: ferreteria.id } });
     await prisma.compraDetalle.deleteMany({ where: { ferreteriaId: ferreteria.id } });
     await prisma.compra.deleteMany({ where: { ferreteriaId: ferreteria.id } });

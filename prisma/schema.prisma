@@ -68,16 +68,17 @@ model Usuario {
   ferreterias FerreteriaUsuario[]
   auditLogs   AuditLog[]
 
-  ventasRegistradas  Venta[]            @relation("VentaRegistradaPor")
-  ventasAnuladas     Venta[]            @relation("VentaAnuladaPor")
-  comprasRegistradas Compra[]           @relation("CompraRegistradaPor")
-  comprasAnuladas    Compra[]           @relation("CompraAnuladaPor")
-  movimientosStock   MovimientoStock[]  @relation("MovimientoStockRegistradoPor")
-  movimientosCC      CuentaCliente[]    @relation("CuentaClienteRegistradoPor")
-  devolucionesCompra DevolucionCompra[] @relation("DevolucionCompraRegistradoPor")
-  devolucionesVenta  DevolucionVenta[]  @relation("DevolucionVentaRegistradoPor")
-  cierresCaja        CierreCaja[]       @relation("CierreCajaRegistradoPor")
-  movimientosCP      CuentaProveedor[]  @relation("CuentaProveedorRegistradoPor")
+  ventasRegistradas   Venta[]            @relation("VentaRegistradaPor")
+  ventasAnuladas      Venta[]            @relation("VentaAnuladaPor")
+  comprasRegistradas  Compra[]           @relation("CompraRegistradaPor")
+  comprasAnuladas     Compra[]           @relation("CompraAnuladaPor")
+  movimientosStock    MovimientoStock[]  @relation("MovimientoStockRegistradoPor")
+  movimientosCC       CuentaCliente[]    @relation("CuentaClienteRegistradoPor")
+  devolucionesCompra  DevolucionCompra[] @relation("DevolucionCompraRegistradoPor")
+  devolucionesVenta   DevolucionVenta[]  @relation("DevolucionVentaRegistradoPor")
+  cierresCaja         CierreCaja[]       @relation("CierreCajaRegistradoPor")
+  cierresCajaEditados CierreCaja[]       @relation("CierreCajaActualizadoPor")
+  movimientosCP       CuentaProveedor[]  @relation("CuentaProveedorRegistradoPor")
 }
 
 model Account {
@@ -142,9 +143,9 @@ model Ferreteria {
   rut         String?
   razonSocial String?
 
-  telefono  String?
-  direccion String?
-  logoUrl   String?
+  telefono      String?
+  direccion     String?
+  logoUrl       String?
   colorPrimario String?
 
   // Habilita/deshabilita módulos futuros por ferretería sin migraciones.
@@ -156,22 +157,22 @@ model Ferreteria {
   // la cotización "del día" automática: hay que guardarla a mano o
   // consultarla contra el BCU y confirmar, así nunca cambia un total ya
   // calculado por sorpresa.
-  cotizacionDolar          Decimal?  @db.Decimal(10, 4)
-  cotizacionDolarFecha     DateTime?
+  cotizacionDolar      Decimal?  @db.Decimal(10, 4)
+  cotizacionDolarFecha DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  usuarios    FerreteriaUsuario[]
-  categorias  Categoria[]
-  marcas      Marca[]
-  clientes    Cliente[]
-  proveedores Proveedor[]
-  productos   Producto[]
-  compras     Compra[]
-  ventas      Venta[]
-  auditLogs   AuditLog[]
-  cierresCaja CierreCaja[]
+  usuarios     FerreteriaUsuario[]
+  categorias   Categoria[]
+  marcas       Marca[]
+  clientes     Cliente[]
+  proveedores  Proveedor[]
+  productos    Producto[]
+  compras      Compra[]
+  ventas       Venta[]
+  auditLogs    AuditLog[]
+  cierresCaja  CierreCaja[]
   listasPrecio ListaPrecio[]
 
   @@index([estado])
@@ -512,6 +513,7 @@ enum MedioPago {
   CONTADO
   CREDITO
   TRANSFERENCIA
+  DEBITO
 }
 
 model Venta {
@@ -521,7 +523,6 @@ model Venta {
 
   fecha     DateTime        @db.Date
   estado    EstadoOperacion @default(PENDIENTE)
-  tipoIva   TipoIva         @default(EXENTO)
   medioPago MedioPago       @default(CONTADO)
 
   subtotal Decimal @default(0) @db.Decimal(12, 2)
@@ -555,10 +556,14 @@ model VentaDetalle {
   ventaId      String
   productoId   String
 
-  precio Decimal @db.Decimal(12, 2)
+  precio           Decimal @db.Decimal(12, 2)
   // Puntos porcentuales (0-100), no un monto en $ — se aplica sobre
   // precio*cantidad al calcular `total`.
-  descuento Decimal @default(0) @db.Decimal(5, 2)
+  descuento        Decimal @default(0) @db.Decimal(5, 2)
+  // IVA por línea, no por venta entera — mismo criterio que ya usaba
+  // CompraDetalle.tipoIva (dos productos de la misma venta pueden tener
+  // tratamiento de IVA distinto). Reemplaza al viejo Venta.tipoIva.
+  tipoIva          TipoIva @default(EXENTO)
   // CHECK (cantidad > 0), CHECK (cantidadDevuelta <= cantidad) — migración manual.
   cantidad         Int
   cantidadDevuelta Int     @default(0)
@@ -646,6 +651,12 @@ model MovimientoStock {
 
 enum OrigenCuentaCliente {
   VENTA_CREDITO
+  // Una venta Contado o Débito también queda asentada acá -- como un Debe
+  // y un Haber por el mismo monto y fecha (dos filas: nunca una sola fila
+  // con ambos, ver el CHECK de más abajo) -- para que la cuenta corriente
+  // sea el historial completo de lo que le vendiste a un cliente, no solo
+  // lo que te debe. El saldo neto no se mueve: ya está cobrada.
+  VENTA_CONTADO
   COBRO
   DEVOLUCION_VENTA
   ANULACION_VENTA_CREDITO
@@ -684,6 +695,11 @@ model CuentaCliente {
 
 enum OrigenCuentaProveedor {
   COMPRA_CREDITO
+  // Espejo de VENTA_CONTADO del lado de compras -- una compra Contado o
+  // Débito queda asentada como Debe + Haber por el mismo monto, para que
+  // la cuenta corriente del proveedor sea el historial completo de lo que
+  // le compraste, no solo lo que le debés.
+  COMPRA_CONTADO
   PAGO
   DEVOLUCION_COMPRA
   ANULACION_COMPRA_CREDITO
@@ -726,8 +742,19 @@ model CuentaProveedor {
 model CierreCaja {
   id           String   @id @default(cuid())
   ferreteriaId String
+  // `fecha` es el inicio del período cerrado y `fechaHasta` el fin
+  // (inclusive) -- para un cierre de un solo día, los dos valores son
+  // iguales. Permite cerrar varios días de una vez si la caja quedó sin
+  // cerrar un tramo (ferretería cerrada, cajero de licencia, etc.), sin
+  // necesitar un modelo aparte para "cierre múltiple".
   fecha        DateTime @db.Date
+  fechaHasta   DateTime @db.Date
 
+  // Efectivo con el que se arrancó el período (vuelto/fondo de caja) --
+  // se suma a lo vendido/cobrado Contado para calcular el esperado. No
+  // existía antes: sin esto, el "esperado" asumía que la caja arrancaba
+  // siempre en $0.
+  montoInicial       Decimal @default(0) @db.Decimal(12, 2)
   totalVentasContado Decimal @db.Decimal(12, 2)
   totalCobrosContado Decimal @db.Decimal(12, 2)
   totalEsperado      Decimal @db.Decimal(12, 2)
@@ -735,17 +762,20 @@ model CierreCaja {
   diferencia         Decimal @db.Decimal(12, 2)
   observaciones      String?
 
-  registradoPorUsuarioId String?
-  createdAt              DateTime @default(now())
+  registradoPorUsuarioId  String?
+  createdAt               DateTime @default(now())
+  actualizadoPorUsuarioId String?
+  updatedAt               DateTime @updatedAt
 
-  ferreteria    Ferreteria @relation(fields: [ferreteriaId], references: [id], onDelete: Cascade)
-  registradoPor Usuario?   @relation("CierreCajaRegistradoPor", fields: [registradoPorUsuarioId], references: [id])
+  ferreteria     Ferreteria @relation(fields: [ferreteriaId], references: [id], onDelete: Cascade)
+  registradoPor  Usuario?   @relation("CierreCajaRegistradoPor", fields: [registradoPorUsuarioId], references: [id])
+  actualizadoPor Usuario?   @relation("CierreCajaActualizadoPor", fields: [actualizadoPorUsuarioId], references: [id])
 
-  // Un cierre por día por ferretería — cerrar la caja dos veces el mismo
-  // día no tiene sentido en un negocio de un solo turno (si más adelante
-  // hace falta multi-turno, es un campo "turno" más en esta unique, no un
-  // rediseño).
-  @@unique([ferreteriaId, fecha])
+  // Ya no hay un UNIQUE de (ferreteriaId, fecha): con cierres por rango,
+  // dos períodos válidos pueden compartir ferretería sin compartir fecha
+  // exacta de inicio. Que ningún día quede cubierto por dos cierres a la
+  // vez es una regla de negocio (se valida a mano en registrarCierreCaja
+  // antes de crear), no algo que un UNIQUE de columnas alcance a expresar.
   @@index([ferreteriaId, fecha])
 }
 

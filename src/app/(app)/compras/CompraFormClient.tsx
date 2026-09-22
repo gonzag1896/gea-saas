@@ -48,7 +48,7 @@ export function CompraFormClient({
   const [proveedorId, setProveedorId] = useState(proveedores[0]?.id ?? "");
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
   const [numeroFactura, setNumeroFactura] = useState("");
-  const [medioPago, setMedioPago] = useState<"CONTADO" | "CREDITO">("CONTADO");
+  const [medioPago, setMedioPago] = useState<"CONTADO" | "CREDITO" | "DEBITO">("CONTADO");
   const [lineas, setLineas] = useState<Linea[]>([]);
   const [lineaActual, setLineaActual] = useState<Linea>({
     productoId: productos[0]?.id ?? "", cantidad: "1", costoUnitario: "", descuento: "0", tipoIva: "EXENTO",
@@ -165,8 +165,9 @@ export function CompraFormClient({
               <Input value={numeroFactura} onChange={(e) => setNumeroFactura(e.target.value)} placeholder="Opcional" />
             </FormField>
             <FormField label="Medio de pago" required>
-              <Select value={medioPago} onChange={(e) => setMedioPago(e.target.value as "CONTADO" | "CREDITO")}>
+              <Select value={medioPago} onChange={(e) => setMedioPago(e.target.value as "CONTADO" | "CREDITO" | "DEBITO")}>
                 <option value="CONTADO">Contado (no genera deuda)</option>
+                <option value="DEBITO">Débito (no genera deuda)</option>
                 <option value="CREDITO">Crédito (queda en cuenta corriente)</option>
               </Select>
             </FormField>

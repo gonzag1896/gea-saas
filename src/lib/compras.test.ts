@@ -27,6 +27,7 @@ describe("compras — confirmar, anular, devolución", () => {
     // Producto->Compra es RESTRICT a propósito (no se pierde historial de
     // compras borrando un producto) — para limpiar la fixture del test hay
     // que bajar en orden de dependencia antes de borrar la ferretería.
+    await prisma.cuentaProveedor.deleteMany({ where: { ferreteriaId: ferreteria.id } });
     await prisma.movimientoStock.deleteMany({ where: { ferreteriaId: ferreteria.id } });
     await prisma.devolucionCompra.deleteMany({ where: { ferreteriaId: ferreteria.id } });
     await prisma.compraDetalle.deleteMany({ where: { ferreteriaId: ferreteria.id } });
