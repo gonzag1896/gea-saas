@@ -45,7 +45,6 @@ export function LoginForm() {
       <Button type="submit" loading={enviando} className="mt-1 w-full justify-center">
         {enviando ? "Ingresando…" : "Ingresar"}
       </Button>
-      <a href="/recuperar-password" className="text-center text-sm text-primary underline underline-offset-2">Olvidé mi contraseña</a>
     </form>
   );
 }
