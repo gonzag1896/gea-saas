@@ -78,6 +78,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
     redirect("/login");
   }
 
+  // El Dashboard queda fuera del alcance de Cajero — a diferencia del
+  // resto de las pantallas (donde cada rol ve un subconjunto de columnas/
+  // KPIs), acá directamente no entra: números de rentabilidad y margen
+  // que no le corresponden ver. Va a Ventas, su pantalla principal.
+  if (contexto.rol === "CAJERO") redirect("/ventas");
+
   const hasta = searchParams.hasta ? new Date(searchParams.hasta) : new Date();
   const desde = searchParams.desde ? new Date(searchParams.desde) : new Date(hasta.getTime() - 29 * 24 * 60 * 60 * 1000);
 

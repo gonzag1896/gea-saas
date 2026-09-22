@@ -151,7 +151,9 @@ export function Sidebar({ rol }: { rol: RolFerreteria | null | undefined }) {
 
       {/* Nav sin scroll: las secciones se expanden/contraen según necesidad */}
       <nav className="flex flex-1 flex-col gap-2 px-3 py-4">
-        <NavLink href="/dashboard" icon={<LayoutDashboard className={iconClass} />} collapsed={collapsed}>Dashboard</NavLink>
+        {rol !== "CAJERO" && (
+          <NavLink href="/dashboard" icon={<LayoutDashboard className={iconClass} />} collapsed={collapsed}>Dashboard</NavLink>
+        )}
 
         {rol && tienePermiso(rol, "productos", "ver") && (
           <GrupoNav
