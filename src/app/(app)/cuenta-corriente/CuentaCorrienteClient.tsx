@@ -18,12 +18,12 @@ export function CuentaCorrienteClient({ clientes }: { clientes: ClienteConSaldo[
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const clientesFiltrados = useMemo(() => {
-    let filtered = clientes.filter(c =>
+    const filtered = clientes.filter(c =>
       `${c.nombre} ${c.telefono ?? ""}`.toLowerCase().includes(busqueda.toLowerCase())
     );
 
     filtered.sort((a, b) => {
-      let aVal: any, bVal: any;
+      let aVal: string | number, bVal: string | number;
       if (sortKey === "nombre") {
         aVal = a.nombre.toLowerCase();
         bVal = b.nombre.toLowerCase();

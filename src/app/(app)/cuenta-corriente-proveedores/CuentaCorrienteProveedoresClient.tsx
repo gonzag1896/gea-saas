@@ -17,12 +17,12 @@ export function CuentaCorrienteProveedoresClient({ proveedores }: { proveedores:
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   const proveedoresFiltrados = useMemo(() => {
-    let filtered = proveedores.filter(p =>
+    const filtered = proveedores.filter(p =>
       `${p.nombre} ${p.telefono ?? ""}`.toLowerCase().includes(busqueda.toLowerCase())
     );
 
     filtered.sort((a, b) => {
-      let aVal: any, bVal: any;
+      let aVal: string | number, bVal: string | number;
       if (sortKey === "nombre") {
         aVal = a.nombre.toLowerCase();
         bVal = b.nombre.toLowerCase();

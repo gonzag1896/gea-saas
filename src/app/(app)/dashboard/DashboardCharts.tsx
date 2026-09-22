@@ -118,7 +118,7 @@ export function DashboardCharts({
                   <XAxis type="number" stroke="var(--color-muted-foreground)" fontSize={12} />
                   <YAxis type="category" dataKey="producto" stroke="var(--color-muted-foreground)" fontSize={11} width={110} tick={{ width: 100 }} />
                   <Tooltip
-                    formatter={(value: number, _name, entry: any) => [`$ ${formatoMoneda(value)} · ${entry.payload.cantidad} u.`, "Vendido"]}
+                    formatter={(value: number, _name, entry: { payload: { cantidad: number } }) => [`$ ${formatoMoneda(value)} · ${entry.payload.cantidad} u.`, "Vendido"]}
                   />
                   <Bar dataKey="total" name="Total" fill="var(--color-primary)" radius={[0, 4, 4, 0]} />
                 </BarChart>
