@@ -26,3 +26,30 @@ export function formatearFecha(fecha: Date | string): string {
 export function formatearFechaHoyUruguay(): string {
   return new Date().toLocaleDateString("es-UY", { timeZone: "America/Montevideo" });
 }
+
+// "Hoy" como fecha calendario en Uruguay, representada igual que cualquier
+// columna @db.Date (medianoche UTC de ese día) — así se puede restar
+// directo contra un valor guardado (ej. Ferreteria.vigenciaHasta) sin que
+// el huso del proceso que corre el código (que en Vercel es UTC, no
+// Montevideo) meta un día de diferencia.
+export function hoyUruguayComoFecha(): Date {
+  const hoyISO = new Date().toLocaleDateString("en-CA", { timeZone: "America/Montevideo" });
+  return new Date(`${hoyISO}T00:00:00.000Z`);
+}
+
+// Suma un mes calendario a una fecha @db.Date (medianoche UTC), operando
+// en UTC para no depender del huso del proceso — mismo motivo que
+// hoyUruguayComoFecha(). Si el mes de destino tiene menos días (ej. 31 de
+// enero + 1 mes), Date.UTC lo corre al mes siguiente (comportamiento
+// estándar de suma de meses, no se "clampea" al último día).
+export function sumarUnMes(fecha: Date): Date {
+  return new Date(Date.UTC(fecha.getUTCFullYear(), fecha.getUTCMonth() + 1, fecha.getUTCDate()));
+}
+
+// Días de calendario entre hoy (Uruguay) y una fecha guardada — negativo
+// si ya pasó. Para el aviso de vencimiento de la mensualidad de la
+// plataforma.
+export function diasHastaUruguay(fecha: Date): number {
+  const hoy = hoyUruguayComoFecha();
+  return Math.round((fecha.getTime() - hoy.getTime()) / 86_400_000);
+}

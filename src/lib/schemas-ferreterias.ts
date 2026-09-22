@@ -7,3 +7,8 @@ export const crearFerreteriaSchema = z.object({
   duenoEmail: z.string().email("Ingresá un email válido."),
   duenoPassword: passwordSchema,
 });
+
+export const registrarPagoPlataformaSchema = z.object({
+  fecha: z.string().refine((v) => !isNaN(Date.parse(v)), "Fecha inválida."),
+  monto: z.number().positive().optional(),
+});

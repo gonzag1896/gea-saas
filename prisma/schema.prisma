@@ -68,17 +68,18 @@ model Usuario {
   ferreterias FerreteriaUsuario[]
   auditLogs   AuditLog[]
 
-  ventasRegistradas   Venta[]            @relation("VentaRegistradaPor")
-  ventasAnuladas      Venta[]            @relation("VentaAnuladaPor")
-  comprasRegistradas  Compra[]           @relation("CompraRegistradaPor")
-  comprasAnuladas     Compra[]           @relation("CompraAnuladaPor")
-  movimientosStock    MovimientoStock[]  @relation("MovimientoStockRegistradoPor")
-  movimientosCC       CuentaCliente[]    @relation("CuentaClienteRegistradoPor")
-  devolucionesCompra  DevolucionCompra[] @relation("DevolucionCompraRegistradoPor")
-  devolucionesVenta   DevolucionVenta[]  @relation("DevolucionVentaRegistradoPor")
-  cierresCaja         CierreCaja[]       @relation("CierreCajaRegistradoPor")
-  cierresCajaEditados CierreCaja[]       @relation("CierreCajaActualizadoPor")
-  movimientosCP       CuentaProveedor[]  @relation("CuentaProveedorRegistradoPor")
+  ventasRegistradas          Venta[]            @relation("VentaRegistradaPor")
+  ventasAnuladas             Venta[]            @relation("VentaAnuladaPor")
+  comprasRegistradas         Compra[]           @relation("CompraRegistradaPor")
+  comprasAnuladas            Compra[]           @relation("CompraAnuladaPor")
+  movimientosStock           MovimientoStock[]  @relation("MovimientoStockRegistradoPor")
+  movimientosCC              CuentaCliente[]    @relation("CuentaClienteRegistradoPor")
+  devolucionesCompra         DevolucionCompra[] @relation("DevolucionCompraRegistradoPor")
+  devolucionesVenta          DevolucionVenta[]  @relation("DevolucionVentaRegistradoPor")
+  cierresCaja                CierreCaja[]       @relation("CierreCajaRegistradoPor")
+  cierresCajaEditados        CierreCaja[]       @relation("CierreCajaActualizadoPor")
+  movimientosCP              CuentaProveedor[]  @relation("CuentaProveedorRegistradoPor")
+  pagosPlataformaRegistrados PagoPlataforma[]
 }
 
 model Account {
@@ -160,22 +161,56 @@ model Ferreteria {
   cotizacionDolar      Decimal?  @db.Decimal(10, 4)
   cotizacionDolarFecha DateTime?
 
+  // Vigencia de la mensualidad que le cobra la plataforma a esta
+  // ferretería. Campo cacheado (la fuente de verdad es la suma de
+  // PagoPlataforma) para no recalcular en cada request si hoy está por
+  // vencer — se recalcula solo al registrar un pago nuevo. Fecha
+  // calendario, no timestamp (ver src/lib/fecha.ts sobre el bug de huso
+  // horario ya resuelto en el resto del sistema).
+  vigenciaHasta DateTime? @db.Date
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  usuarios     FerreteriaUsuario[]
-  categorias   Categoria[]
-  marcas       Marca[]
-  clientes     Cliente[]
-  proveedores  Proveedor[]
-  productos    Producto[]
-  compras      Compra[]
-  ventas       Venta[]
-  auditLogs    AuditLog[]
-  cierresCaja  CierreCaja[]
-  listasPrecio ListaPrecio[]
+  usuarios        FerreteriaUsuario[]
+  categorias      Categoria[]
+  marcas          Marca[]
+  clientes        Cliente[]
+  proveedores     Proveedor[]
+  productos       Producto[]
+  compras         Compra[]
+  ventas          Venta[]
+  auditLogs       AuditLog[]
+  cierresCaja     CierreCaja[]
+  listasPrecio    ListaPrecio[]
+  pagosPlataforma PagoPlataforma[]
 
   @@index([estado])
+}
+
+// Historial de cobros de la mensualidad de la plataforma (no es plata del
+// negocio de la ferretería — es lo que Gonzalo le cobra a la ferretería
+// por usar GEA). Cada pago extiende Ferreteria.vigenciaHasta un mes desde
+// la vigencia anterior si todavía no había vencido (no se "pierden" días
+// pagados de más por pagar temprano), o desde la fecha del pago si ya
+// había vencido.
+model PagoPlataforma {
+  id           String @id @default(cuid())
+  ferreteriaId String
+
+  fecha         DateTime @db.Date // día en que se recibió el pago
+  monto         Decimal? @db.Decimal(10, 2)
+  vigenciaDesde DateTime @db.Date
+  vigenciaHasta DateTime @db.Date
+
+  registradoPorId String?
+
+  createdAt DateTime @default(now())
+
+  ferreteria    Ferreteria @relation(fields: [ferreteriaId], references: [id], onDelete: Cascade)
+  registradoPor Usuario?   @relation(fields: [registradoPorId], references: [id])
+
+  @@index([ferreteriaId])
 }
 
 enum RolFerreteria {
