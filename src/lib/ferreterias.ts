@@ -13,6 +13,7 @@ export type FerreteriaConResumen = {
   vigenciaHasta: Date | null;
   cantidadUsuarios: number;
   cantidadProductos: number;
+  ultimoMonto: number | null;
 };
 
 export async function listarFerreterias(): Promise<FerreteriaConResumen[]> {
@@ -28,6 +29,21 @@ export async function listarFerreterias(): Promise<FerreteriaConResumen[]> {
     },
   });
 
+  // Último monto pagado por ferretería, para estimar el ingreso mensual
+  // en el panel — una sola consulta ordenada por fecha en vez de N
+  // findFirst (la cantidad de ferreterías es chica, pero no hay motivo
+  // para pagar N round-trips pudiendo pagar 1).
+  const pagos = await prisma.pagoPlataforma.findMany({
+    orderBy: { fecha: "desc" },
+    select: { ferreteriaId: true, monto: true },
+  });
+  const ultimoMontoPorFerreteria = new Map<string, number | null>();
+  for (const p of pagos) {
+    if (!ultimoMontoPorFerreteria.has(p.ferreteriaId)) {
+      ultimoMontoPorFerreteria.set(p.ferreteriaId, p.monto ? Number(p.monto) : null);
+    }
+  }
+
   return ferreterias.map((f) => ({
     id: f.id,
     nombre: f.nombre,
@@ -37,6 +53,7 @@ export async function listarFerreterias(): Promise<FerreteriaConResumen[]> {
     vigenciaHasta: f.vigenciaHasta,
     cantidadUsuarios: f._count.usuarios,
     cantidadProductos: f._count.productos,
+    ultimoMonto: ultimoMontoPorFerreteria.get(f.id) ?? null,
   }));
 }
 

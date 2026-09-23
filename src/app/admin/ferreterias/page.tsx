@@ -6,6 +6,7 @@ import { formatearFecha, diasHastaUruguay } from "@/lib/fecha";
 import { cn } from "@/lib/cn";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 
 // Colores del aviso de vigencia: vencida (o hoy) en rojo, a 7 días o
@@ -31,6 +32,15 @@ export default async function AdminFerreteriasPage() {
 
   const ferreterias = await listarFerreterias();
 
+  // KPIs de cobranza: solo sobre ferreterías activas — una inactiva no es
+  // "plata que se está por perder", ya se dio de baja a propósito.
+  const activas = ferreterias.filter((f) => f.estado === "ACTIVO");
+  const vencidas = activas.filter((f) => f.vigenciaHasta && diasHastaUruguay(f.vigenciaHasta) < 0);
+  const porVencer = activas.filter((f) => f.vigenciaHasta && diasHastaUruguay(f.vigenciaHasta) >= 0 && diasHastaUruguay(f.vigenciaHasta) <= 7);
+  const alDia = activas.filter((f) => f.vigenciaHasta && diasHastaUruguay(f.vigenciaHasta) > 7);
+  const sinPagos = activas.filter((f) => !f.vigenciaHasta);
+  const ingresoMensualEstimado = activas.reduce((total, f) => total + (f.ultimoMonto ?? 0), 0);
+
   return (
     <main className="mx-auto flex min-h-screen max-w-4xl flex-col gap-6 p-8">
       <PageHeader
@@ -42,6 +52,30 @@ export default async function AdminFerreteriasPage() {
           </Link>
         }
       />
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <Card>
+          <p className="text-xs font-medium text-muted-foreground">Vencidas</p>
+          <p className="mt-1 text-2xl font-semibold text-danger">{vencidas.length}</p>
+        </Card>
+        <Card>
+          <p className="text-xs font-medium text-muted-foreground">Vencen en ≤7 días</p>
+          <p className="mt-1 text-2xl font-semibold text-warning">{porVencer.length}</p>
+        </Card>
+        <Card>
+          <p className="text-xs font-medium text-muted-foreground">Al día</p>
+          <p className="mt-1 text-2xl font-semibold text-success">{alDia.length}</p>
+        </Card>
+        <Card>
+          <p className="text-xs font-medium text-muted-foreground">Ingreso mensual estimado</p>
+          <p className="mt-1 text-2xl font-semibold text-foreground">{ingresoMensualEstimado.toLocaleString("es-UY")}</p>
+        </Card>
+      </div>
+      {sinPagos.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {sinPagos.length} ferretería{sinPagos.length === 1 ? "" : "s"} activa{sinPagos.length === 1 ? "" : "s"} sin ningún pago registrado todavía (no entra{sinPagos.length === 1 ? "" : "n"} en los números de arriba).
+        </p>
+      )}
 
       {ferreterias.length === 0 ? (
         <EmptyState message="Todavía no hay ninguna ferretería creada." />
