@@ -1,71 +1,115 @@
-import { redirect, notFound } from "next/navigation";
+import { notFound } from "next/navigation";
 import Link from "next/link";
-import { auth } from "@/lib/auth";
+import { ArrowLeft, CalendarCheck, AlertTriangle, HelpCircle, Receipt, ArrowRight } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { listarPagosPlataforma } from "@/lib/ferreterias";
-import { formatearFecha } from "@/lib/fecha";
+import { formatearFecha, diasHastaUruguay } from "@/lib/fecha";
+import { cn } from "@/lib/cn";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { RegistrarPagoFormClient } from "./RegistrarPagoFormClient";
 
-export default async function DetalleFerreteriaPage({ params }: { params: { id: string } }) {
-  const session = await auth();
-  if (!session?.user) redirect("/login");
-  if (!session.user.isSuperAdmin) redirect("/dashboard");
+function EstadoVigenciaHero({ vigenciaHasta }: { vigenciaHasta: Date | null }) {
+  if (!vigenciaHasta) {
+    return (
+      <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/50 p-5">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+          <HelpCircle className="h-5 w-5" />
+        </span>
+        <div>
+          <p className="font-medium text-foreground">Sin pagos registrados</p>
+          <p className="text-sm text-muted-foreground">Todavía no tiene ninguna mensualidad cargada.</p>
+        </div>
+      </div>
+    );
+  }
 
+  const dias = diasHastaUruguay(vigenciaHasta);
+  const vencida = dias < 0;
+  const porVencer = dias >= 0 && dias <= 7;
+  const tono = vencida ? "danger" : porVencer ? "warning" : "success";
+  const Icon = vencida ? AlertTriangle : CalendarCheck;
+
+  const mensaje = vencida
+    ? `Venció el ${formatearFecha(vigenciaHasta)}`
+    : dias === 0
+      ? `Vence hoy (${formatearFecha(vigenciaHasta)})`
+      : `Vigente hasta el ${formatearFecha(vigenciaHasta)} · ${dias} día${dias === 1 ? "" : "s"}`;
+
+  return (
+    <div className={cn(
+      "flex items-center gap-3 rounded-xl border p-5",
+      tono === "danger" && "border-danger/20 bg-danger/10",
+      tono === "warning" && "border-warning/20 bg-warning/10",
+      tono === "success" && "border-success/20 bg-success/10",
+    )}>
+      <span className={cn(
+        "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
+        tono === "danger" && "bg-danger/15 text-danger",
+        tono === "warning" && "bg-warning/15 text-warning",
+        tono === "success" && "bg-success/15 text-success",
+      )}>
+        <Icon className="h-5 w-5" />
+      </span>
+      <p className={cn(
+        "font-medium",
+        tono === "danger" && "text-danger",
+        tono === "warning" && "text-warning",
+        tono === "success" && "text-success",
+      )}>
+        {mensaje}
+      </p>
+    </div>
+  );
+}
+
+export default async function DetalleFerreteriaPage({ params }: { params: { id: string } }) {
   const ferreteria = await prisma.ferreteria.findUnique({ where: { id: params.id } });
   if (!ferreteria) notFound();
 
   const pagos = await listarPagosPlataforma(ferreteria.id);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 p-8">
-      <PageHeader
-        title={ferreteria.nombre}
-        description={ferreteria.vigenciaHasta
-          ? `Vigencia de la mensualidad hasta el ${formatearFecha(ferreteria.vigenciaHasta)}.`
-          : "Todavía no tiene ningún pago registrado."}
-      />
+    <div className="mx-auto flex max-w-2xl flex-col gap-6">
+      <Link href="/admin/ferreterias" className="flex w-fit items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground">
+        <ArrowLeft className="h-3.5 w-3.5" /> Ferreterías
+      </Link>
 
-      <Card>
+      <PageHeader title={ferreteria.nombre} description="Mensualidad de la plataforma" />
+
+      <EstadoVigenciaHero vigenciaHasta={ferreteria.vigenciaHasta} />
+
+      <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
         <h3 className="mb-4 text-sm font-semibold text-foreground">Registrar pago</h3>
         <RegistrarPagoFormClient ferreteriaId={ferreteria.id} />
-      </Card>
+      </div>
 
       <div>
         <h3 className="mb-3 text-sm font-semibold text-foreground">Historial de pagos</h3>
         {pagos.length === 0 ? (
           <EmptyState message="Sin pagos registrados todavía." />
         ) : (
-          <div className="overflow-hidden rounded-lg border border-border">
-            <table className="w-full text-sm">
-              <thead className="bg-muted text-left">
-                <tr>
-                  <th className="px-4 py-3 font-semibold text-foreground">Fecha de pago</th>
-                  <th className="px-4 py-3 font-semibold text-foreground">Monto</th>
-                  <th className="px-4 py-3 font-semibold text-foreground">Vigencia extendida hasta</th>
-                  <th className="px-4 py-3 font-semibold text-foreground">Registrado por</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {pagos.map((p) => (
-                  <tr key={p.id}>
-                    <td className="px-4 py-3 text-foreground">{formatearFecha(p.fecha)}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{p.monto ?? "—"}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{formatearFecha(p.vigenciaHasta)}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{p.registradoPorNombre ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="flex flex-col gap-2">
+            {pagos.map((p) => (
+              <div key={p.id} className="flex items-center gap-4 rounded-xl border border-border bg-surface p-4 shadow-card">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Receipt className="h-4 w-4" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-foreground">{formatearFecha(p.fecha)}</p>
+                  <p className="text-xs text-muted-foreground">{p.registradoPorNombre ?? "—"}</p>
+                </div>
+                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <span>{formatearFecha(p.vigenciaDesde)}</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                  <span className="font-medium text-foreground">{formatearFecha(p.vigenciaHasta)}</span>
+                </div>
+                <p className="w-16 shrink-0 text-right font-semibold text-foreground">{p.monto ?? "—"}</p>
+              </div>
+            ))}
           </div>
         )}
       </div>
-
-      <Link href="/admin/ferreterias" className="text-sm text-primary underline underline-offset-2">
-        ← Volver a Ferreterías
-      </Link>
-    </main>
+    </div>
   );
 }
