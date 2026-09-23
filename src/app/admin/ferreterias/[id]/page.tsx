@@ -1,13 +1,13 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, CalendarCheck, AlertTriangle, HelpCircle, Receipt, ArrowRight } from "lucide-react";
+import { ArrowLeft, CalendarCheck, AlertTriangle, HelpCircle } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { listarPagosPlataforma } from "@/lib/ferreterias";
 import { formatearFecha, diasHastaUruguay } from "@/lib/fecha";
 import { cn } from "@/lib/cn";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { RegistrarPagoFormClient } from "./RegistrarPagoFormClient";
+import { PagosListClient } from "./PagosListClient";
 
 function EstadoVigenciaHero({ vigenciaHasta }: { vigenciaHasta: Date | null }) {
   if (!vigenciaHasta) {
@@ -86,29 +86,18 @@ export default async function DetalleFerreteriaPage({ params }: { params: { id: 
 
       <div>
         <h3 className="mb-3 text-sm font-semibold text-foreground">Historial de pagos</h3>
-        {pagos.length === 0 ? (
-          <EmptyState message="Sin pagos registrados todavía." />
-        ) : (
-          <div className="flex flex-col gap-2">
-            {pagos.map((p) => (
-              <div key={p.id} className="flex items-center gap-4 rounded-xl border border-border bg-surface p-4 shadow-card">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                  <Receipt className="h-4 w-4" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-foreground">{formatearFecha(p.fecha)}</p>
-                  <p className="text-xs text-muted-foreground">{p.registradoPorNombre ?? "—"}</p>
-                </div>
-                <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                  <span>{formatearFecha(p.vigenciaDesde)}</span>
-                  <ArrowRight className="h-3.5 w-3.5" />
-                  <span className="font-medium text-foreground">{formatearFecha(p.vigenciaHasta)}</span>
-                </div>
-                <p className="w-16 shrink-0 text-right font-semibold text-foreground">{p.monto ?? "—"}</p>
-              </div>
-            ))}
-          </div>
-        )}
+        <PagosListClient
+          ferreteriaId={ferreteria.id}
+          pagos={pagos.map((p) => ({
+            id: p.id,
+            fecha: p.fecha.toISOString(),
+            monto: p.monto,
+            esGratis: p.esGratis,
+            vigenciaDesde: p.vigenciaDesde.toISOString(),
+            vigenciaHasta: p.vigenciaHasta.toISOString(),
+            registradoPorNombre: p.registradoPorNombre,
+          }))}
+        />
       </div>
     </div>
   );

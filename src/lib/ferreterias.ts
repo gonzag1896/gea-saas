@@ -35,10 +35,13 @@ export async function listarFerreterias(): Promise<FerreteriaConResumen[]> {
   // para pagar N round-trips pudiendo pagar 1).
   const pagos = await prisma.pagoPlataforma.findMany({
     orderBy: { fecha: "desc" },
-    select: { ferreteriaId: true, monto: true },
+    select: { ferreteriaId: true, monto: true, esGratis: true },
   });
   const ultimoMontoPorFerreteria = new Map<string, number | null>();
   for (const p of pagos) {
+    // Un mes gratis no aporta al ingreso estimado — se ignora acá y se
+    // sigue buscando el último pago REAL para esa ferretería.
+    if (p.esGratis) continue;
     if (!ultimoMontoPorFerreteria.has(p.ferreteriaId)) {
       ultimoMontoPorFerreteria.set(p.ferreteriaId, p.monto ? Number(p.monto) : null);
     }
@@ -115,6 +118,7 @@ export type PagoPlataformaListado = {
   id: string;
   fecha: Date;
   monto: string | null;
+  esGratis: boolean;
   vigenciaDesde: Date;
   vigenciaHasta: Date;
   registradoPorNombre: string | null;
@@ -131,20 +135,38 @@ export async function listarPagosPlataforma(ferreteriaId: string): Promise<PagoP
     id: p.id,
     fecha: p.fecha,
     monto: p.monto?.toString() ?? null,
+    esGratis: p.esGratis,
     vigenciaDesde: p.vigenciaDesde,
     vigenciaHasta: p.vigenciaHasta,
     registradoPorNombre: p.registradoPor ? (p.registradoPor.name ?? p.registradoPor.email) : null,
   }));
 }
 
-// Registra un cobro de la mensualidad y extiende la vigencia un mes desde
-// donde correspondía: si la ferretería todavía tenía vigencia futura, se
-// suma sobre esa fecha (pagar antes de que venza no "pierde" los días que
-// ya estaban pagos); si ya había vencido (o nunca tuvo), se cuenta un mes
-// desde la fecha del pago.
+// Recalcula el campo cacheado Ferreteria.vigenciaHasta como el máximo
+// entre todos sus pagos — fuente de verdad después de editar un pago
+// cualquiera (no necesariamente el último cronológicamente).
+async function recalcularVigenciaCacheada(ferreteriaId: string) {
+  const ultimo = await prisma.pagoPlataforma.findFirst({
+    where: { ferreteriaId },
+    orderBy: { vigenciaHasta: "desc" },
+    select: { vigenciaHasta: true },
+  });
+  await prisma.ferreteria.update({
+    where: { id: ferreteriaId },
+    data: { vigenciaHasta: ultimo?.vigenciaHasta ?? null },
+  });
+}
+
+// Registra un cobro (o una cortesía "mes gratis") de la mensualidad.
+// Por defecto la vigencia se extiende un mes desde donde correspondía: si
+// la ferretería todavía tenía vigencia futura, se suma sobre esa fecha
+// (pagar antes de que venza no "pierde" los días que ya estaban pagos);
+// si ya había vencido (o nunca tuvo), se cuenta un mes desde la fecha del
+// pago. `vigenciaHastaManual` permite fijar una fecha exacta en vez de
+// ese cálculo (ej. una cortesía "hasta el 10/10" que no es un mes redondo).
 export async function registrarPagoPlataforma(
   ferreteriaId: string,
-  datos: { fecha: Date; monto?: number },
+  datos: { fecha: Date; monto?: number; esGratis?: boolean; vigenciaHastaManual?: Date },
   usuarioQueEjecuta: string,
 ) {
   const ferreteria = await prisma.ferreteria.findUnique({ where: { id: ferreteriaId } });
@@ -152,7 +174,8 @@ export async function registrarPagoPlataforma(
 
   const vigenciaPrevia = ferreteria.vigenciaHasta;
   const base = vigenciaPrevia && vigenciaPrevia.getTime() > datos.fecha.getTime() ? vigenciaPrevia : datos.fecha;
-  const nuevaVigencia = sumarUnMes(base);
+  const nuevaVigencia = datos.vigenciaHastaManual ?? sumarUnMes(base);
+  const monto = datos.esGratis ? undefined : datos.monto;
 
   const [, pago] = await prisma.$transaction([
     prisma.ferreteria.update({ where: { id: ferreteriaId }, data: { vigenciaHasta: nuevaVigencia } }),
@@ -160,7 +183,8 @@ export async function registrarPagoPlataforma(
       data: {
         ferreteriaId,
         fecha: datos.fecha,
-        monto: datos.monto,
+        monto,
+        esGratis: datos.esGratis ?? false,
         vigenciaDesde: base,
         vigenciaHasta: nuevaVigencia,
         registradoPorId: usuarioQueEjecuta,
@@ -174,8 +198,44 @@ export async function registrarPagoPlataforma(
     ferreteriaId,
     entidad: "PagoPlataforma",
     entidadId: pago.id,
-    detalle: { fecha: datos.fecha.toISOString(), monto: datos.monto, vigenciaHasta: nuevaVigencia.toISOString() },
+    detalle: { fecha: datos.fecha.toISOString(), monto, esGratis: datos.esGratis ?? false, vigenciaHasta: nuevaVigencia.toISOString() },
   });
 
   return pago;
+}
+
+// Edita un pago existente (fecha, monto, si es gratis, o la vigencia que
+// otorgó) y recalcula la vigencia cacheada de la ferretería a partir de
+// TODOS sus pagos — no asume que el editado sea el más reciente.
+export async function editarPagoPlataforma(
+  ferreteriaId: string,
+  pagoId: string,
+  datos: { fecha: Date; monto?: number; esGratis?: boolean; vigenciaHasta: Date },
+  usuarioQueEjecuta: string,
+) {
+  const existente = await prisma.pagoPlataforma.findUnique({ where: { id: pagoId } });
+  if (!existente || existente.ferreteriaId !== ferreteriaId) throw new EntidadNoEncontradaError("Pago no encontrado.");
+
+  const monto = datos.esGratis ? null : (datos.monto ?? null);
+
+  await prisma.pagoPlataforma.update({
+    where: { id: pagoId },
+    data: {
+      fecha: datos.fecha,
+      monto,
+      esGratis: datos.esGratis ?? false,
+      vigenciaHasta: datos.vigenciaHasta,
+    },
+  });
+
+  await recalcularVigenciaCacheada(existente.ferreteriaId);
+
+  await auditar({
+    accion: "PAGO_PLATAFORMA_EDITA",
+    usuarioId: usuarioQueEjecuta,
+    ferreteriaId: existente.ferreteriaId,
+    entidad: "PagoPlataforma",
+    entidadId: pagoId,
+    detalle: { fecha: datos.fecha.toISOString(), monto, esGratis: datos.esGratis ?? false, vigenciaHasta: datos.vigenciaHasta.toISOString() },
+  });
 }

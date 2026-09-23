@@ -198,8 +198,9 @@ model PagoPlataforma {
   id           String @id @default(cuid())
   ferreteriaId String
 
-  fecha         DateTime @db.Date // día en que se recibió el pago
+  fecha         DateTime @db.Date // día en que se recibió el pago (o del que se otorga, si es gratis)
   monto         Decimal? @db.Decimal(10, 2)
+  esGratis      Boolean  @default(false) // cortesía/promo, sin cobro real — no cuenta para el ingreso estimado
   vigenciaDesde DateTime @db.Date
   vigenciaHasta DateTime @db.Date
 

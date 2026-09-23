@@ -8,7 +8,18 @@ export const crearFerreteriaSchema = z.object({
   duenoPassword: passwordSchema,
 });
 
+const fechaValida = z.string().refine((v) => !isNaN(Date.parse(v)), "Fecha inválida.");
+
 export const registrarPagoPlataformaSchema = z.object({
-  fecha: z.string().refine((v) => !isNaN(Date.parse(v)), "Fecha inválida."),
+  fecha: fechaValida,
   monto: z.number().positive().optional(),
+  esGratis: z.boolean().optional(),
+  vigenciaHastaManual: fechaValida.optional(),
+});
+
+export const editarPagoPlataformaSchema = z.object({
+  fecha: fechaValida,
+  monto: z.number().positive().optional(),
+  esGratis: z.boolean().optional(),
+  vigenciaHasta: fechaValida,
 });

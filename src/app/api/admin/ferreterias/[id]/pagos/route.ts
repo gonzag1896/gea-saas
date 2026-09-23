@@ -23,7 +23,12 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   try {
     const pago = await registrarPagoPlataforma(
       params.id,
-      { fecha: new Date(parsed.data.fecha), monto: parsed.data.monto },
+      {
+        fecha: new Date(parsed.data.fecha),
+        monto: parsed.data.monto,
+        esGratis: parsed.data.esGratis,
+        vigenciaHastaManual: parsed.data.vigenciaHastaManual ? new Date(parsed.data.vigenciaHastaManual) : undefined,
+      },
       session.user.id,
     );
     return NextResponse.json({ pago });
