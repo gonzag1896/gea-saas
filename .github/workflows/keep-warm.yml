@@ -1,0 +1,26 @@
+name: Mantener la base despierta (horario comercial)
+
+# Neon suspende el compute tras unos minutos sin actividad y la primera
+# consulta después de eso tarda un par de segundos (cold start). Este ping
+# cada ~5 minutos lo mantiene despierto solo cuando hay gente trabajando:
+# lunes a sábado de 8:00 a 20:00 hora de Uruguay (UTC-3 = 11:00–23:00 UTC).
+# Fuera de horario la base se duerme sola y no consume horas de cómputo.
+#
+# La URL sale de la variable de repositorio APP_URL (Settings > Secrets and
+# variables > Actions > Variables); si no está, usa la de Vercel. Cuando
+# haya dominio propio, alcanza con cambiar esa variable.
+on:
+  schedule:
+    - cron: "*/5 11-22 * * 1-6"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping /api/health
+        env:
+          APP_URL: ${{ vars.APP_URL || 'https://gea-saas.vercel.app' }}
+        run: |
+          curl --fail --silent --show-error --max-time 30 --retry 2 --retry-delay 5 "$APP_URL/api/health"

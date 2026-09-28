@@ -22,15 +22,24 @@ export async function POST(req: Request) {
   const parsed = crearClienteSchema.safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Datos inválidos." }, { status: 400 });
 
-  // Cliente no tiene UNIQUE de negocio (igual que en el GeneXus original) —
-  // no hace falta manejar P2002 acá.
-  const cliente = await prisma.cliente.create({
-    data: {
-      ferreteriaId: resultado.contexto.ferreteriaId,
-      nombre: parsed.data.nombre,
-      telefono: parsed.data.telefono,
-      listaPrecioId: parsed.data.listaPrecioId || undefined,
-    },
-  });
-  return NextResponse.json({ cliente }, { status: 201 });
+  try {
+    const cliente = await prisma.cliente.create({
+      data: {
+        ferreteriaId: resultado.contexto.ferreteriaId,
+        nombre: parsed.data.nombre,
+        rut: parsed.data.rut || undefined,
+        telefono: parsed.data.telefono,
+        email: parsed.data.email || undefined,
+        direccion: parsed.data.direccion,
+        ciudad: parsed.data.ciudad,
+        listaPrecioId: parsed.data.listaPrecioId || undefined,
+      },
+    });
+    return NextResponse.json({ cliente }, { status: 201 });
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "P2002") {
+      return NextResponse.json({ error: "Ya existe un cliente con ese RUT." }, { status: 409 });
+    }
+    throw error;
+  }
 }

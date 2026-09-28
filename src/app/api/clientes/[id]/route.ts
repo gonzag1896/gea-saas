@@ -34,6 +34,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     // "" (opción "Sin lista" del selector) -> null, para limpiar la FK en
     // vez de intentar guardar un id vacío que no matchea ninguna lista.
     ...(parsed.data.listaPrecioId !== undefined ? { listaPrecioId: parsed.data.listaPrecioId || null } : {}),
+    // "" -> null: el UNIQUE parcial de rut excluye NULL, no "" — sin esto,
+    // dos clientes sin RUT chocarían al guardar el segundo con el campo vacío.
+    ...(parsed.data.rut !== undefined ? { rut: parsed.data.rut || null } : {}),
   };
 
   try {
@@ -45,6 +48,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   } catch (error) {
     if (error instanceof Error && "code" in error && error.code === "P2025") {
       return NextResponse.json({ error: "Cliente no encontrado." }, { status: 404 });
+    }
+    if (error instanceof Error && "code" in error && error.code === "P2002") {
+      return NextResponse.json({ error: "Ya existe un cliente con ese RUT." }, { status: 409 });
     }
     throw error;
   }

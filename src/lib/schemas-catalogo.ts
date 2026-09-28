@@ -63,12 +63,20 @@ export const modificarProductoPrecioSchema = z.object({
 
 export const crearClienteSchema = z.object({
   nombre: z.string().min(1, "El nombre es obligatorio."),
+  rut: z.string().optional(),
   telefono: z.string().optional(),
+  email: z.string().email().optional().or(z.literal("")),
+  direccion: z.string().optional(),
+  ciudad: z.string().optional(),
   listaPrecioId: z.string().optional(),
 });
 export const modificarClienteSchema = z.object({
   nombre: z.string().min(1).optional(),
+  rut: z.string().optional(),
   telefono: z.string().optional(),
+  email: z.string().email().optional().or(z.literal("")),
+  direccion: z.string().optional(),
+  ciudad: z.string().optional(),
   listaPrecioId: z.string().optional(),
   activo: z.boolean().optional(),
 });

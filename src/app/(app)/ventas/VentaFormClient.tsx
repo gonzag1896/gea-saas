@@ -12,10 +12,10 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Table } from "@/components/ui/Table";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ProductoAutocomplete } from "@/components/ui/ProductoAutocomplete";
+import { ProductoAutocomplete, type ProductoOpcion } from "@/components/ui/ProductoAutocomplete";
 
-type Opcion = { id: string; nombre?: string; codigo?: string; codigoBarras?: string | null; descripcion?: string; moneda?: "UYU" | "USD"; precioVenta?: string; listaPrecioId?: string | null; stockActual?: number };
-type Linea = { productoId: string; cantidad: string; precio: string; descuento: string; tipoIva: "EXENTO" | "TOTAL"; moneda: "UYU" | "USD" };
+type ClienteOpcion = { id: string; nombre: string; listaPrecioId: string | null };
+type Linea = { productoId: string; nombre: string; cantidad: string; precio: string; descuento: string; tipoIva: "EXENTO" | "TOTAL"; moneda: "UYU" | "USD" };
 
 const ETIQUETA_MEDIO_PAGO: Record<"CONTADO" | "CREDITO" | "TRANSFERENCIA" | "DEBITO", string> = {
   CONTADO: "Contado",
@@ -30,13 +30,11 @@ function formatoMoneda(n: number) {
 
 export function VentaFormClient({
   clientes,
-  productos,
-  preciosPorLista = {},
+  hayProductos,
   cotizacionDolar,
 }: {
-  clientes: Opcion[];
-  productos: Opcion[];
-  preciosPorLista?: Record<string, Record<string, string>>;
+  clientes: ClienteOpcion[];
+  hayProductos: boolean;
   cotizacionDolar?: string | null;
 }) {
   const router = useRouter();
@@ -45,8 +43,9 @@ export function VentaFormClient({
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
   const [medioPago, setMedioPago] = useState<"CONTADO" | "CREDITO" | "TRANSFERENCIA" | "DEBITO">("CONTADO");
   const [lineas, setLineas] = useState<Linea[]>([]);
+  const [productoActual, setProductoActual] = useState<ProductoOpcion | null>(null);
   const [lineaActual, setLineaActual] = useState<Linea>({
-    productoId: productos[0]?.id ?? "", cantidad: "1", precio: "", descuento: "0", tipoIva: "EXENTO", moneda: productos[0]?.moneda ?? "UYU",
+    productoId: "", nombre: "", cantidad: "1", precio: "", descuento: "0", tipoIva: "EXENTO", moneda: "UYU",
   });
   const [codigoEscaneado, setCodigoEscaneado] = useState("");
   const [errorEscaneo, setErrorEscaneo] = useState<string | null>(null);
@@ -61,20 +60,14 @@ export function VentaFormClient({
     setLineaActual({ ...lineaActual, cantidad: "1", precio: "", descuento: "0" });
   }
 
-  // Precio de partida para un producto según la lista asignada al
-  // cliente elegido — si el cliente no tiene lista, o la lista no tiene
-  // un precio cargado para ese producto en particular, cae al precio
-  // base del producto. Siempre queda editable a mano después.
-  function precioSugerido(idProducto: string, idCliente: string = clienteId) {
-    const cliente = clientes.find((c) => c.id === idCliente);
-    const producto = productos.find((p) => p.id === idProducto);
-    const porLista = cliente?.listaPrecioId ? preciosPorLista[cliente.listaPrecioId]?.[idProducto] : undefined;
-    return porLista ?? producto?.precioVenta ?? "";
-  }
+  // La lista de precio aplicable es la del cliente elegido: el servidor
+  // devuelve el precio de esa lista si el producto tiene uno cargado, y si
+  // no, el precio base. Siempre queda editable a mano después.
+  const listaPrecioId = clientes.find((c) => c.id === clienteId)?.listaPrecioId ?? null;
 
-  function tienePrecioDeLista(idProducto: string) {
-    const cliente = clientes.find((c) => c.id === clienteId);
-    return !!cliente?.listaPrecioId && preciosPorLista[cliente.listaPrecioId]?.[idProducto] !== undefined;
+  function elegirProducto(p: ProductoOpcion) {
+    setProductoActual(p);
+    setLineaActual((l) => ({ ...l, productoId: p.id, nombre: `${p.codigo} — ${p.descripcion}`, precio: p.precioVenta, moneda: p.moneda }));
   }
 
   // Un lector de código de barras USB actúa como teclado: tipea el código
@@ -83,19 +76,22 @@ export function VentaFormClient({
   // onKeyDown y no un <form> propio: este campo ya vive adentro del
   // <form> de toda la venta, y un <form> anidado es HTML inválido — el
   // navegador lo aplana y el Enter termina mandando el formulario entero.
-  function escanear() {
+  async function escanear() {
     const codigo = codigoEscaneado.trim();
     if (!codigo) return;
 
-    const producto = productos.find((p) => p.codigoBarras === codigo);
+    const params = new URLSearchParams({ codigoBarras: codigo });
+    if (listaPrecioId) params.set("listaPrecioId", listaPrecioId);
+    const res = await fetch(`/api/productos/buscar?${params}`);
+    const producto: ProductoOpcion | undefined = res.ok ? (await res.json()).productos[0] : undefined;
     if (!producto) {
-      setErrorEscaneo(`Ningún producto tiene el código de barras "${codigo}".`);
+      setErrorEscaneo(res.ok ? `Ningún producto tiene el código de barras "${codigo}".` : "No se pudo buscar el producto. Probá de nuevo.");
       setCodigoEscaneado("");
       return;
     }
 
     setErrorEscaneo(null);
-    setLineas((prev) => [...prev, { productoId: producto.id, cantidad: "1", precio: precioSugerido(producto.id) || "0", descuento: "0", tipoIva: "EXENTO", moneda: producto.moneda ?? "UYU" }]);
+    setLineas((prev) => [...prev, { productoId: producto.id, nombre: `${producto.codigo} — ${producto.descripcion}`, cantidad: "1", precio: producto.precioVenta || "0", descuento: "0", tipoIva: "EXENTO", moneda: producto.moneda }]);
     setCodigoEscaneado("");
     inputEscaneoRef.current?.focus();
   }
@@ -143,11 +139,6 @@ export function VentaFormClient({
     router.refresh();
   }
 
-  function nombreProducto(id: string) {
-    const p = productos.find((prod) => prod.id === id);
-    return p ? `${p.codigo} — ${p.descripcion}` : id;
-  }
-
   function totalLinea(l: Linea) {
     return Number(l.cantidad) * Number(l.precio) * (1 - Number(l.descuento || 0) / 100);
   }
@@ -162,7 +153,7 @@ export function VentaFormClient({
   const total = subtotal + iva;
   const hayLineaConIva = lineas.some((l) => l.tipoIva === "TOTAL");
 
-  if (clientes.length === 0 || productos.length === 0) {
+  if (clientes.length === 0 || !hayProductos) {
     return (
       <div className="flex flex-col gap-6">
         <PageHeader title="Nueva venta" />
@@ -182,13 +173,21 @@ export function VentaFormClient({
             <FormField label="Cliente" required>
               <Select
                 value={clienteId}
-                onChange={(e) => {
-                  setClienteId(e.target.value);
+                onChange={async (e) => {
+                  const nuevoId = e.target.value;
+                  setClienteId(nuevoId);
                   // Cambiar de cliente puede cambiar la lista de precio
                   // aplicable — si ya hay un producto elegido en la línea
-                  // en curso, se re-sugiere el precio para el cliente nuevo.
-                  if (lineaActual.productoId) {
-                    setLineaActual((l) => ({ ...l, precio: precioSugerido(l.productoId, e.target.value) }));
+                  // en curso, se vuelve a pedir su precio para el cliente nuevo.
+                  if (!productoActual) return;
+                  const nuevaLista = clientes.find((c) => c.id === nuevoId)?.listaPrecioId;
+                  const params = new URLSearchParams({ id: productoActual.id });
+                  if (nuevaLista) params.set("listaPrecioId", nuevaLista);
+                  const res = await fetch(`/api/productos/buscar?${params}`);
+                  const actualizado: ProductoOpcion | undefined = res.ok ? (await res.json()).productos[0] : undefined;
+                  if (actualizado) {
+                    setProductoActual(actualizado);
+                    setLineaActual((l) => ({ ...l, precio: actualizado.precioVenta }));
                   }
                 }}
               >
@@ -232,16 +231,12 @@ export function VentaFormClient({
 
           <div className="flex flex-col gap-4">
             <FormField label="O elegí el producto manualmente">
-              <ProductoAutocomplete
-                productos={productos}
-                value={lineaActual.productoId}
-                onChange={(id) => setLineaActual({ ...lineaActual, productoId: id, precio: precioSugerido(id), moneda: productos.find((p) => p.id === id)?.moneda ?? "UYU" })}
-              />
+              <ProductoAutocomplete seleccionado={productoActual} onChange={elegirProducto} listaPrecioId={listaPrecioId} />
             </FormField>
             {(() => {
-              const p = productos.find((prod) => prod.id === lineaActual.productoId);
+              const p = productoActual;
               const cantidad = Number(lineaActual.cantidad || 0);
-              if (!p || p.stockActual === undefined || cantidad <= p.stockActual) return null;
+              if (!p || cantidad <= p.stockActual) return null;
               return (
                 <p className="-mt-2 text-xs text-warning">
                   Stock disponible: {p.stockActual}. La venta se puede registrar igual, el stock queda negativo.
@@ -258,7 +253,7 @@ export function VentaFormClient({
               <FormField label="Cantidad">
                 <Input type="number" min="1" value={lineaActual.cantidad} onChange={(e) => setLineaActual({ ...lineaActual, cantidad: e.target.value })} />
               </FormField>
-              <FormField label={`${tienePrecioDeLista(lineaActual.productoId) ? "Precio unitario (lista del cliente)" : "Precio unitario"} (${lineaActual.moneda === "USD" ? "US$" : "$"})`}>
+              <FormField label={`${productoActual?.precioDeLista ? "Precio unitario (lista del cliente)" : "Precio unitario"} (${lineaActual.moneda === "USD" ? "US$" : "$"})`}>
                 <Input type="number" step="0.01" min="0" value={lineaActual.precio} onChange={(e) => setLineaActual({ ...lineaActual, precio: e.target.value })} placeholder={lineaActual.moneda === "USD" ? "US$" : "$"} />
               </FormField>
               <FormField label="Descuento %">
@@ -296,7 +291,7 @@ export function VentaFormClient({
                   <tbody>
                     {lineas.map((l, i) => (
                       <Table.Row key={i}>
-                        <Table.Cell>{nombreProducto(l.productoId)}</Table.Cell>
+                        <Table.Cell>{l.nombre}</Table.Cell>
                         <Table.Cell>
                           <Input
                             type="number" min="1" value={l.cantidad}

@@ -12,10 +12,10 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Table } from "@/components/ui/Table";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ProductoAutocomplete } from "@/components/ui/ProductoAutocomplete";
+import { ProductoAutocomplete, type ProductoOpcion } from "@/components/ui/ProductoAutocomplete";
 
-type Opcion = { id: string; nombre?: string; codigo?: string; codigoBarras?: string | null; descripcion?: string; moneda?: "UYU" | "USD"; stockActual?: number };
-type Linea = { productoId: string; cantidad: string; costoUnitario: string; descuento: string; tipoIva: "EXENTO" | "TOTAL"; moneda: "UYU" | "USD" };
+type ProveedorOpcion = { id: string; nombre: string };
+type Linea = { productoId: string; nombre: string; cantidad: string; costoUnitario: string; descuento: string; tipoIva: "EXENTO" | "TOTAL"; moneda: "UYU" | "USD" };
 
 function formatoMoneda(n: number) {
   return n.toLocaleString("es-UY", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -36,11 +36,11 @@ function subtotalLineaPesos(l: Linea, cotizacion: number | null) {
 
 export function CompraFormClient({
   proveedores,
-  productos,
+  hayProductos,
   cotizacionDolar,
 }: {
-  proveedores: Opcion[];
-  productos: Opcion[];
+  proveedores: ProveedorOpcion[];
+  hayProductos: boolean;
   cotizacionDolar?: string | null;
 }) {
   const router = useRouter();
@@ -50,9 +50,9 @@ export function CompraFormClient({
   const [numeroFactura, setNumeroFactura] = useState("");
   const [medioPago, setMedioPago] = useState<"CONTADO" | "CREDITO" | "DEBITO">("CONTADO");
   const [lineas, setLineas] = useState<Linea[]>([]);
+  const [productoActual, setProductoActual] = useState<ProductoOpcion | null>(null);
   const [lineaActual, setLineaActual] = useState<Linea>({
-    productoId: productos[0]?.id ?? "", cantidad: "1", costoUnitario: "", descuento: "0", tipoIva: "EXENTO",
-    moneda: productos[0]?.moneda ?? "UYU",
+    productoId: "", nombre: "", cantidad: "1", costoUnitario: "", descuento: "0", tipoIva: "EXENTO", moneda: "UYU",
   });
   const [codigoEscaneado, setCodigoEscaneado] = useState("");
   const [errorEscaneo, setErrorEscaneo] = useState<string | null>(null);
@@ -72,19 +72,25 @@ export function CompraFormClient({
   // el costo de una compra varía por compra, no hay un "precio actual"
   // para autocompletar — el escaneo elige el producto y pasa el foco al
   // costo unitario para que se escriba y se confirme con "Agregar".
-  function escanear() {
+  function elegirProducto(p: ProductoOpcion) {
+    setProductoActual(p);
+    setLineaActual((l) => ({ ...l, productoId: p.id, nombre: `${p.codigo} — ${p.descripcion}`, moneda: p.moneda }));
+  }
+
+  async function escanear() {
     const codigo = codigoEscaneado.trim();
     if (!codigo) return;
 
-    const producto = productos.find((p) => p.codigoBarras === codigo);
+    const res = await fetch(`/api/productos/buscar?${new URLSearchParams({ codigoBarras: codigo })}`);
+    const producto: ProductoOpcion | undefined = res.ok ? (await res.json()).productos[0] : undefined;
     if (!producto) {
-      setErrorEscaneo(`Ningún producto tiene el código de barras "${codigo}".`);
+      setErrorEscaneo(res.ok ? `Ningún producto tiene el código de barras "${codigo}".` : "No se pudo buscar el producto. Probá de nuevo.");
       setCodigoEscaneado("");
       return;
     }
 
     setErrorEscaneo(null);
-    setLineaActual((prev) => ({ ...prev, productoId: producto.id, moneda: producto.moneda ?? "UYU" }));
+    elegirProducto(producto);
     setCodigoEscaneado("");
     inputCostoRef.current?.focus();
   }
@@ -129,14 +135,9 @@ export function CompraFormClient({
     router.refresh();
   }
 
-  function nombreProducto(id: string) {
-    const p = productos.find((prod) => prod.id === id);
-    return p ? `${p.codigo} — ${p.descripcion}` : id;
-  }
-
   const subtotal = lineas.reduce((acc, l) => acc + subtotalLineaPesos(l, cotizacion), 0);
 
-  if (proveedores.length === 0 || productos.length === 0) {
+  if (proveedores.length === 0 || !hayProductos) {
     return (
       <div className="flex flex-col gap-6">
         <PageHeader title="Nueva compra" />
@@ -200,11 +201,7 @@ export function CompraFormClient({
 
           <div className="flex flex-col gap-4">
             <FormField label="Producto">
-              <ProductoAutocomplete
-                productos={productos}
-                value={lineaActual.productoId}
-                onChange={(id) => setLineaActual({ ...lineaActual, productoId: id, moneda: productos.find((p) => p.id === id)?.moneda ?? "UYU" })}
-              />
+              <ProductoAutocomplete seleccionado={productoActual} onChange={elegirProducto} />
             </FormField>
             {lineaActual.moneda === "USD" && !cotizacion && (
               <p className="-mt-2 text-xs text-danger">
@@ -254,7 +251,7 @@ export function CompraFormClient({
                   <tbody>
                     {lineas.map((l, i) => (
                       <Table.Row key={i}>
-                        <Table.Cell>{nombreProducto(l.productoId)}</Table.Cell>
+                        <Table.Cell>{l.nombre}</Table.Cell>
                         <Table.Cell>
                           <Input
                             type="number" min="1" value={l.cantidad}

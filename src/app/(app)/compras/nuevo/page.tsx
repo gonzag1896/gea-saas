@@ -15,16 +15,18 @@ export default async function NuevaCompraPage() {
   }
 
   const { ferreteriaId } = contexto;
-  const [proveedores, productos, ferreteria] = await Promise.all([
+  // Los productos se buscan a demanda en /api/productos/buscar; acá solo
+  // se necesita saber si hay alguno.
+  const [proveedores, cantidadProductos, ferreteria] = await Promise.all([
     prisma.proveedor.findMany({ where: { ferreteriaId }, select: { id: true, nombre: true } }),
-    prisma.producto.findMany({ where: { ferreteriaId }, select: { id: true, codigo: true, codigoBarras: true, descripcion: true, moneda: true, stockActual: true } }),
+    prisma.producto.count({ where: { ferreteriaId, activo: true } }),
     prisma.ferreteria.findUnique({ where: { id: ferreteriaId }, select: { cotizacionDolar: true } }),
   ]);
 
   return (
     <CompraFormClient
       proveedores={proveedores}
-      productos={productos}
+      hayProductos={cantidadProductos > 0}
       cotizacionDolar={ferreteria?.cotizacionDolar?.toString() ?? null}
     />
   );

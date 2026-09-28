@@ -348,6 +348,14 @@ model Producto {
   @@unique([ferreteriaId, codigoBarras])
   @@index([ferreteriaId, subCategoriaId])
   @@index([ferreteriaId, marcaId])
+  // Listado ordenado por descripción (pantalla Productos): recorre el índice
+  // en orden en vez de ordenar todo el catálogo en cada página.
+  @@index([ferreteriaId, descripcion])
+  // Índices trigram (extensión pg_trgm, se crea en la migración): la
+  // búsqueda por texto parcial (ILIKE '%tornillo%') no recorre todo el
+  // catálogo.
+  @@index([descripcion(ops: raw("gin_trgm_ops"))], type: Gin, map: "Producto_descripcion_trgm_idx")
+  @@index([codigo(ops: raw("gin_trgm_ops"))], type: Gin, map: "Producto_codigo_trgm_idx")
 }
 
 // ============================================================
@@ -358,7 +366,14 @@ model Cliente {
   id           String  @id @default(cuid())
   ferreteriaId String
   nombre       String
+  // UNIQUE parcial (ferreteriaId, rut) WHERE rut IS NOT NULL — mismo
+  // criterio que Proveedor.rut (Prisma no soporta índices únicos
+  // parciales en el DSL, se agrega en la migración manual).
+  rut          String?
   telefono     String?
+  email        String?
+  direccion    String?
+  ciudad       String?
   activo       Boolean @default(true)
 
   // Null = precio base (Producto.precioVenta) — asignar una lista acá es
@@ -676,6 +691,8 @@ model MovimientoStock {
 
   @@unique([id, ferreteriaId])
   @@index([ferreteriaId, productoId, fecha])
+  // Pantalla Movimiento de Stock: últimos N movimientos de la ferretería.
+  @@index([ferreteriaId, createdAt])
   @@index([origenTipo, origenId])
 }
 

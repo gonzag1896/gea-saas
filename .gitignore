@@ -36,3 +36,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# scripts de trabajo puntuales (importaciones, análisis) — no son código de la app
+/scratchpad

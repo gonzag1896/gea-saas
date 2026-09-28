@@ -1,45 +1,73 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/cn";
 
-export type ProductoOpcion = { id: string; codigo?: string; descripcion?: string; stockActual?: number };
+export type ProductoOpcion = {
+  id: string;
+  codigo: string;
+  codigoBarras: string | null;
+  descripcion: string;
+  moneda: "UYU" | "USD";
+  precioVenta: string;
+  precioDeLista?: boolean;
+  stockActual: number;
+};
 
-// Buscador de productos por código o nombre, con el stock a la vista, para
-// reemplazar el <select> plano en Compras/Ventas — con decenas de
-// productos ya es más rápido tipear que scrollear un combo nativo.
+// Buscador de productos por código o nombre, con el stock a la vista.
+// Consulta al servidor mientras se escribe (con una pequeña espera para no
+// pegarle en cada tecla): el catálogo puede tener miles de productos y ya
+// no se manda entero al navegador.
 export function ProductoAutocomplete({
-  productos,
-  value,
+  seleccionado,
   onChange,
+  listaPrecioId,
   placeholder = "Buscar por código o nombre…",
 }: {
-  productos: ProductoOpcion[];
-  value: string;
-  onChange: (id: string) => void;
+  seleccionado: ProductoOpcion | null;
+  onChange: (producto: ProductoOpcion) => void;
+  listaPrecioId?: string | null;
   placeholder?: string;
 }) {
-  const seleccionado = productos.find((p) => p.id === value);
   const [texto, setTexto] = useState("");
   const [abierto, setAbierto] = useState(false);
-  const contenedorRef = useRef<HTMLDivElement>(null);
+  const [resultados, setResultados] = useState<ProductoOpcion[]>([]);
+  const [buscando, setBuscando] = useState(false);
+  const [falloBusqueda, setFalloBusqueda] = useState(false);
 
-  const resultados = useMemo(() => {
-    const q = texto.trim().toLowerCase();
-    if (!q) return productos.slice(0, 30);
-    return productos
-      .filter((p) => p.codigo?.toLowerCase().includes(q) || p.descripcion?.toLowerCase().includes(q))
-      .slice(0, 30);
-  }, [productos, texto]);
+  useEffect(() => {
+    if (!abierto) return;
+    const controlador = new AbortController();
+    const espera = setTimeout(async () => {
+      setBuscando(true);
+      setFalloBusqueda(false);
+      try {
+        const params = new URLSearchParams({ q: texto });
+        if (listaPrecioId) params.set("listaPrecioId", listaPrecioId);
+        const res = await fetch(`/api/productos/buscar?${params}`, { signal: controlador.signal });
+        if (!res.ok) throw new Error();
+        setResultados((await res.json()).productos);
+        setBuscando(false);
+      } catch (e) {
+        if ((e as Error).name === "AbortError") return;
+        setFalloBusqueda(true);
+        setBuscando(false);
+      }
+    }, texto ? 250 : 0);
+    return () => {
+      clearTimeout(espera);
+      controlador.abort();
+    };
+  }, [texto, abierto, listaPrecioId]);
 
   function elegir(p: ProductoOpcion) {
-    onChange(p.id);
+    onChange(p);
     setTexto("");
     setAbierto(false);
   }
 
   return (
-    <div ref={contenedorRef} className="relative">
+    <div className="relative">
       <input
         type="text"
         value={abierto ? texto : seleccionado ? `${seleccionado.codigo} — ${seleccionado.descripcion}` : ""}
@@ -60,7 +88,9 @@ export function ProductoAutocomplete({
       />
       {abierto && (
         <div className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-md border border-border bg-surface shadow-lg">
-          {resultados.length === 0 && <p className="px-3 py-2 text-sm text-muted-foreground">Sin resultados.</p>}
+          {falloBusqueda && <p className="px-3 py-2 text-sm text-danger">No se pudo buscar. Probá de nuevo.</p>}
+          {!falloBusqueda && buscando && resultados.length === 0 && <p className="px-3 py-2 text-sm text-muted-foreground">Buscando…</p>}
+          {!falloBusqueda && !buscando && resultados.length === 0 && <p className="px-3 py-2 text-sm text-muted-foreground">Sin resultados.</p>}
           {resultados.map((p) => (
             <button
               key={p.id}
@@ -70,11 +100,9 @@ export function ProductoAutocomplete({
               className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-primary/10"
             >
               <span className="truncate">{p.codigo} — {p.descripcion}</span>
-              {p.stockActual !== undefined && (
-                <span className={cn("shrink-0 font-mono text-xs tabular-nums", p.stockActual <= 0 ? "text-danger" : "text-muted-foreground")}>
-                  Stock: {p.stockActual}
-                </span>
-              )}
+              <span className={cn("shrink-0 font-mono text-xs tabular-nums", p.stockActual <= 0 ? "text-danger" : "text-muted-foreground")}>
+                Stock: {p.stockActual}
+              </span>
             </button>
           ))}
         </div>

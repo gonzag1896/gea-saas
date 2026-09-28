@@ -18,7 +18,7 @@ export default async function EditarClientePage({ params }: { params: { id: stri
   const [cliente, listasPrecio] = await Promise.all([
     prisma.cliente.findUnique({
       where: { id_ferreteriaId: { id: params.id, ferreteriaId } },
-      select: { id: true, nombre: true, telefono: true, activo: true, listaPrecioId: true },
+      select: { id: true, nombre: true, rut: true, telefono: true, email: true, direccion: true, ciudad: true, activo: true, listaPrecioId: true },
     }),
     // Sin filtrar por activo=true: si el cliente ya estaba asignado a una
     // lista desactivada, tiene que seguir apareciendo en el selector —

@@ -61,19 +61,19 @@ export async function totalPorCobrar(ferreteriaId: string): Promise<number> {
 
 export type ProductoStockBajo = { id: string; codigo: string; descripcion: string; stockActual: number; stockMinimo: number };
 
-// Trae solo los productos activos (catálogo de una ferretería no pasa de
-// unos cientos de ítems) y filtra en memoria — Prisma no compara dos
-// columnas de la misma fila (stockActual <= stockMinimo) en un `where`
-// sin SQL crudo, y acá no hace falta.
+// El filtro (stockActual <= stockMinimo), el orden por faltante y el límite
+// se resuelven en la base: con un catálogo de miles de productos, traerlos
+// todos a Node solo para quedarse con 5 era el costo del dashboard. Se usa
+// SQL crudo (parametrizado) porque Prisma no ordena por la resta de dos
+// columnas.
 export async function productosStockBajo(ferreteriaId: string, limite = 5): Promise<ProductoStockBajo[]> {
-  const productos = await prisma.producto.findMany({
-    where: { ferreteriaId, activo: true },
-    select: { id: true, codigo: true, descripcion: true, stockActual: true, stockMinimo: true },
-  });
-  return productos
-    .filter((p) => p.stockActual <= p.stockMinimo)
-    .sort((a, b) => (a.stockActual - a.stockMinimo) - (b.stockActual - b.stockMinimo))
-    .slice(0, limite);
+  return prisma.$queryRaw<ProductoStockBajo[]>`
+    SELECT id, codigo, descripcion, "stockActual", "stockMinimo"
+    FROM "Producto"
+    WHERE "ferreteriaId" = ${ferreteriaId} AND activo AND "stockActual" <= "stockMinimo"
+    ORDER BY ("stockActual" - "stockMinimo") ASC, descripcion ASC
+    LIMIT ${limite}
+  `;
 }
 
 export type PuntoVentasDiarias = { fecha: string; total: number };

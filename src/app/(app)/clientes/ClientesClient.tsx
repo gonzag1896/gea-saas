@@ -13,7 +13,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { cn } from "@/lib/cn";
 
-type Cliente = { id: string; nombre: string; telefono: string | null; activo: boolean };
+type Cliente = { id: string; nombre: string; rut: string | null; telefono: string | null; ciudad: string | null; activo: boolean };
 type SortKey = "nombre" | "estado";
 type SortDir = "asc" | "desc";
 const PAGE_SIZE = 10;
@@ -57,7 +57,7 @@ export function ClientesClient({
 
   const clientesFiltrados = useMemo(() => {
     const filtered = clientes.filter((c) =>
-      `${c.nombre} ${c.telefono ?? ""}`.toLowerCase().includes(busqueda.toLowerCase())
+      `${c.nombre} ${c.rut ?? ""} ${c.telefono ?? ""} ${c.ciudad ?? ""}`.toLowerCase().includes(busqueda.toLowerCase())
     );
 
     filtered.sort((a, b) => {
@@ -188,8 +188,10 @@ export function ClientesClient({
                   >
                     <td className="px-4 py-3">
                       <p className="font-medium text-foreground truncate">{cliente.nombre}</p>
-                      {cliente.telefono && (
-                        <p className="text-xs text-muted-foreground mt-0.5">{cliente.telefono}</p>
+                      {(cliente.rut || cliente.telefono || cliente.ciudad) && (
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                          {[cliente.rut, cliente.telefono, cliente.ciudad].filter(Boolean).join(" · ")}
+                        </p>
                       )}
                     </td>
 

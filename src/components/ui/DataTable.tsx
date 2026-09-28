@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { ArrowUp, ArrowDown, ChevronsUpDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Table } from "./Table";
 import { SearchInput } from "./SearchInput";
@@ -17,7 +18,21 @@ export interface DataTableColumn<T> {
   headClassName?: string;
 }
 
+// Modo servidor: la búsqueda, el orden y la paginación viven en la URL
+// (?q=&orden=&dir=&page=) y los resuelve el Server Component con Prisma —
+// el navegador solo recibe la página actual. La key de cada columna
+// ordenable es el valor de ?orden=.
+export interface DataTableServidor {
+  q: string;
+  pagina: number;
+  totalPaginas: number;
+  total: number;
+  orden: string;
+  dir: "asc" | "desc";
+}
+
 interface DataTableProps<T> {
+  servidor?: DataTableServidor;
   data: T[];
   columns: DataTableColumn<T>[];
   rowKey: (row: T) => string;
@@ -34,6 +49,7 @@ interface DataTableProps<T> {
 // Server Component, así que no hace falta ida y vuelta al servidor para
 // nada de esto. Reemplaza el <Table> crudo repetido módulo por módulo.
 export function DataTable<T>({
+  servidor,
   data,
   columns,
   rowKey,
@@ -48,15 +64,38 @@ export function DataTable<T>({
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(1);
+  const router = useRouter();
+  const pathname = usePathname();
+  const [pendiente, iniciarTransicion] = useTransition();
+  const [textoServidor, setTextoServidor] = useState(servidor?.q ?? "");
+
+  function irA(cambios: Partial<{ q: string; pagina: number; orden: string; dir: string }>) {
+    if (!servidor) return;
+    const q = cambios.q ?? servidor.q;
+    const params = new URLSearchParams();
+    if (q) params.set("q", q);
+    params.set("orden", cambios.orden ?? servidor.orden);
+    params.set("dir", cambios.dir ?? servidor.dir);
+    params.set("page", String(cambios.pagina ?? servidor.pagina));
+    iniciarTransicion(() => router.replace(`${pathname}?${params}`));
+  }
+
+  // Búsqueda con espera de 300 ms para no consultar en cada tecla.
+  useEffect(() => {
+    if (!servidor || textoServidor === servidor.q) return;
+    const espera = setTimeout(() => irA({ q: textoServidor, pagina: 1 }), 300);
+    return () => clearTimeout(espera);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [textoServidor]);
 
   const filtered = useMemo(() => {
-    if (!searchValue || !query.trim()) return data;
+    if (servidor || !searchValue || !query.trim()) return data;
     const q = query.trim().toLowerCase();
     return data.filter((row) => searchValue(row).toLowerCase().includes(q));
   }, [data, query, searchValue]);
 
   const sorted = useMemo(() => {
-    if (!sortKey) return filtered;
+    if (servidor || !sortKey) return filtered;
     const columna = columns.find((c) => c.key === sortKey);
     if (!columna?.sortValue) return filtered;
     const copia = [...filtered];
@@ -69,12 +108,18 @@ export function DataTable<T>({
     return copia;
   }, [filtered, sortKey, sortDir, columns]);
 
-  const totalPaginas = Math.max(1, Math.ceil(sorted.length / pageSize));
-  const paginaActual = Math.min(page, totalPaginas);
-  const paginado = sorted.slice((paginaActual - 1) * pageSize, paginaActual * pageSize);
+  const totalPaginas = servidor ? servidor.totalPaginas : Math.max(1, Math.ceil(sorted.length / pageSize));
+  const paginaActual = servidor ? servidor.pagina : Math.min(page, totalPaginas);
+  const totalResultados = servidor ? servidor.total : sorted.length;
+  const paginado = servidor ? data : sorted.slice((paginaActual - 1) * pageSize, paginaActual * pageSize);
+  const hayBusqueda = servidor ? servidor.q !== "" : query !== "";
 
   function alternarOrden(col: DataTableColumn<T>) {
     if (!col.sortValue) return;
+    if (servidor) {
+      irA({ orden: col.key, dir: servidor.orden === col.key && servidor.dir === "asc" ? "desc" : "asc", pagina: 1 });
+      return;
+    }
     if (sortKey !== col.key) {
       setSortKey(col.key);
       setSortDir("asc");
@@ -85,12 +130,12 @@ export function DataTable<T>({
 
   return (
     <div className="flex flex-col gap-3">
-      {(searchValue || actions) && (
+      {(searchValue || servidor || actions) && (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          {searchValue ? (
+          {searchValue || servidor ? (
             <SearchInput
-              value={query}
-              onChange={(e) => { setQuery(e.target.value); setPage(1); }}
+              value={servidor ? textoServidor : query}
+              onChange={(e) => { if (servidor) setTextoServidor(e.target.value); else { setQuery(e.target.value); setPage(1); } }}
               placeholder={searchPlaceholder}
               className="max-w-xs"
             />
@@ -99,6 +144,7 @@ export function DataTable<T>({
         </div>
       )}
 
+      <div className={pendiente ? "opacity-60 transition-opacity" : "transition-opacity"}>
       <Table>
         <Table.Head>
           <Table.Row>
@@ -111,8 +157,8 @@ export function DataTable<T>({
                     className="inline-flex items-center gap-1 font-medium hover:text-foreground"
                   >
                     {col.header}
-                    {sortKey === col.key ? (
-                      sortDir === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />
+                    {(servidor ? servidor.orden : sortKey) === col.key ? (
+                      (servidor ? servidor.dir : sortDir) === "asc" ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />
                     ) : (
                       <ChevronsUpDown className="h-3.5 w-3.5 opacity-40" />
                     )}
@@ -134,18 +180,19 @@ export function DataTable<T>({
           ))}
         </tbody>
       </Table>
+      </div>
 
       {loading && <PageLoading />}
-      {!loading && sorted.length === 0 && <EmptyState message={query ? "No se encontraron resultados." : emptyMessage} />}
+      {!loading && totalResultados === 0 && <EmptyState message={hayBusqueda ? "No se encontraron resultados." : emptyMessage} />}
 
       {!loading && totalPaginas > 1 && (
         <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>Página {paginaActual} de {totalPaginas} · {sorted.length} resultados</span>
+          <span>Página {paginaActual} de {totalPaginas} · {totalResultados} resultados</span>
           <div className="flex gap-1">
-            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={paginaActual === 1}>
+            <Button variant="outline" size="sm" onClick={() => (servidor ? irA({ pagina: paginaActual - 1 }) : setPage((p) => Math.max(1, p - 1)))} disabled={paginaActual === 1}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPaginas, p + 1))} disabled={paginaActual === totalPaginas}>
+            <Button variant="outline" size="sm" onClick={() => (servidor ? irA({ pagina: paginaActual + 1 }) : setPage((p) => Math.min(totalPaginas, p + 1)))} disabled={paginaActual === totalPaginas}>
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>

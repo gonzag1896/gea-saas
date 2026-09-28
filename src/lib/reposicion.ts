@@ -22,17 +22,27 @@ export async function sugerirReposicion(
   const desde = new Date();
   desde.setDate(desde.getDate() - diasHistorial);
 
-  const [productos, ventasPorProducto] = await Promise.all([
-    prisma.producto.findMany({
-      where: { ferreteriaId, activo: true },
-      select: { id: true, codigo: true, descripcion: true, stockActual: true, stockMinimo: true },
-    }),
-    prisma.ventaDetalle.groupBy({
-      by: ["productoId"],
-      where: { ferreteriaId, venta: { estado: "CONFIRMADO", fecha: { gte: desde } } },
-      _sum: { cantidad: true },
-    }),
-  ]);
+  const ventasPorProducto = await prisma.ventaDetalle.groupBy({
+    by: ["productoId"],
+    where: { ferreteriaId, venta: { estado: "CONFIRMADO", fecha: { gte: desde } } },
+    _sum: { cantidad: true },
+  });
+
+  // Solo se traen los productos que pueden terminar en la lista: los que ya
+  // están en o bajo el mínimo, o los que se vendieron en el período (para
+  // estimar cuánto les queda). El resto del catálogo nunca pasa el filtro
+  // de más abajo, así que no hace falta leerlo.
+  const productos = await prisma.producto.findMany({
+    where: {
+      ferreteriaId,
+      activo: true,
+      OR: [
+        { stockActual: { lte: prisma.producto.fields.stockMinimo } },
+        { id: { in: ventasPorProducto.map((v) => v.productoId) } },
+      ],
+    },
+    select: { id: true, codigo: true, descripcion: true, stockActual: true, stockMinimo: true },
+  });
 
   const vendidoPorProducto = new Map(ventasPorProducto.map((v) => [v.productoId, v._sum.cantidad ?? 0]));
 

@@ -10,7 +10,7 @@ export default async function ClientesPage() {
 
   const clientes = await prisma.cliente.findMany({
     where: { ferreteriaId: contexto.ferreteriaId },
-    select: { id: true, nombre: true, telefono: true, activo: true },
+    select: { id: true, nombre: true, rut: true, telefono: true, ciudad: true, activo: true },
     orderBy: { nombre: "asc" },
   });
 

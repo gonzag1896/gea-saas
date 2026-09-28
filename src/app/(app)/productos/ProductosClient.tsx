@@ -6,7 +6,7 @@ import { Plus, Pencil, Trash2, RotateCcw, ArrowLeftRight } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
-import { DataTable } from "@/components/ui/DataTable";
+import { DataTable, type DataTableServidor } from "@/components/ui/DataTable";
 import { ActivoBadge, Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -28,11 +28,13 @@ type Producto = {
 
 export function ProductosClient({
   productosIniciales,
+  busqueda,
   puedeCrear,
   puedeEditar,
   puedeEliminar,
 }: {
   productosIniciales: Producto[];
+  busqueda: DataTableServidor;
   puedeCrear: boolean;
   puedeEditar: boolean;
   puedeEliminar: boolean;
@@ -104,15 +106,15 @@ export function ProductosClient({
 
       <DataTable
         data={productos}
+        servidor={busqueda}
         rowKey={(p) => p.id}
-        searchValue={(p) => `${p.codigo} ${p.codigoBarras ?? ""} ${p.descripcion} ${p.subCategoria.nombre} ${p.subCategoria.categoria.nombre} ${p.marca.nombre}`}
         searchPlaceholder="Buscar por código, descripción, familia, categoría o marca…"
         emptyMessage="Todavía no hay productos cargados."
         columns={[
           { key: "codigo", header: "Código", sortValue: (p) => p.codigo, render: (p) => p.codigo },
           { key: "descripcion", header: "Descripción", sortValue: (p) => p.descripcion, render: (p) => p.descripcion },
           {
-            key: "subCategoria", header: "Familia", sortValue: (p) => p.subCategoria.nombre,
+            key: "familia", header: "Familia", sortValue: (p) => p.subCategoria.nombre,
             render: (p) => (
               <div>
                 <div className="text-foreground">{p.subCategoria.nombre}</div>
