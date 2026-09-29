@@ -30,6 +30,13 @@ export const modificarMarcaSchema = z.object({
 // ajuste (Fase 9), nunca como un campo editable del catálogo — si se
 // pudiera escribir acá, dejaría de ser cierto que MovimientoStock es la
 // única fuente de verdad del stock (ver prisma/schema.prisma).
+// Alta rápida desde Ventas/Compras: solo el nombre, ver
+// src/lib/producto-rapido.ts para el resto (categoría/marca/código quedan
+// "pendientes de clasificar").
+export const crearProductoRapidoSchema = z.object({
+  descripcion: z.string().min(1, "El nombre es obligatorio.").max(200),
+});
+
 export const crearProductoSchema = z.object({
   codigo: z.string().min(1, "El código es obligatorio."),
   codigoBarras: z.string().optional(),
@@ -47,6 +54,7 @@ export const crearProductoSchema = z.object({
 // distinto (módulo "precios", exclusivo de Dueño) de modificar el resto
 // del catálogo (módulo "productos", que Depósito también tiene).
 export const modificarProductoGeneralSchema = z.object({
+  codigo: z.string().min(1).optional(),
   descripcion: z.string().min(1).optional(),
   codigoBarras: z.string().optional(),
   subCategoriaId: z.string().min(1).optional(),

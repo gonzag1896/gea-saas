@@ -67,6 +67,7 @@ export function ProductoFormClient({
 
     const payload: Record<string, unknown> = esEdicion
       ? {
+          codigo,
           descripcion,
           codigoBarras,
           subCategoriaId,
@@ -128,14 +129,14 @@ export function ProductoFormClient({
         <form onSubmit={guardar} className="flex flex-col gap-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <FormField label="Código" required>
-              {esEdicion ? (
-                <>
-                  <Input value={codigo} disabled />
-                  <FieldHint>El código no se puede modificar una vez creado.</FieldHint>
-                </>
-              ) : (
+              <>
                 <Input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="Ej: PIN-002" required />
-              )}
+                {esEdicion && (
+                  <FieldHint>
+                    Cambiarlo no afecta las ventas y compras ya registradas — solo cómo se busca el producto de ahora en más.
+                  </FieldHint>
+                )}
+              </>
             </FormField>
             <FormField label="Código de barras">
               <Input

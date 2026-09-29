@@ -18,7 +18,7 @@ export default async function NuevaVentaPage() {
   // Los productos ya no viajan al navegador: se buscan a demanda en
   // /api/productos/buscar. Acá solo se necesita saber si hay alguno.
   const [clientes, cantidadProductos, ferreteria] = await Promise.all([
-    prisma.cliente.findMany({ where: { ferreteriaId }, select: { id: true, nombre: true, listaPrecioId: true } }),
+    prisma.cliente.findMany({ where: { ferreteriaId }, select: { id: true, nombre: true, listaPrecioId: true }, orderBy: { nombre: "asc" } }),
     prisma.producto.count({ where: { ferreteriaId, activo: true } }),
     prisma.ferreteria.findUnique({ where: { id: ferreteriaId }, select: { cotizacionDolar: true } }),
   ]);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, X, ScanBarcode } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -12,7 +12,9 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { Table } from "@/components/ui/Table";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { PromptDialog } from "@/components/ui/PromptDialog";
 import { ProductoAutocomplete, type ProductoOpcion } from "@/components/ui/ProductoAutocomplete";
+import { ordenarPorNombre } from "@/lib/ordenar";
 
 type ClienteOpcion = { id: string; nombre: string; listaPrecioId: string | null };
 type Linea = { productoId: string; nombre: string; cantidad: string; precio: string; descuento: string; tipoIva: "EXENTO" | "TOTAL"; moneda: "UYU" | "USD" };
@@ -29,7 +31,7 @@ function formatoMoneda(n: number) {
 }
 
 export function VentaFormClient({
-  clientes,
+  clientes: clientesIniciales,
   hayProductos,
   cotizacionDolar,
 }: {
@@ -39,7 +41,15 @@ export function VentaFormClient({
 }) {
   const router = useRouter();
   const cotizacion = cotizacionDolar ? Number(cotizacionDolar) : null;
-  const [clienteId, setClienteId] = useState(clientes[0]?.id ?? "");
+  // Estado propio (no solo el prop) para poder sumarle el cliente que se
+  // dé de alta rápida acá mismo, sin perder el resto de la venta en curso
+  // con un router.refresh().
+  const [clientes, setClientes] = useState(clientesIniciales);
+  const clientesOrdenados = useMemo(() => ordenarPorNombre(clientes), [clientes]);
+  const [clienteId, setClienteId] = useState(clientesIniciales[0]?.id ?? "");
+  const [nuevoClienteAbierto, setNuevoClienteAbierto] = useState(false);
+  const [creandoCliente, setCreandoCliente] = useState(false);
+  const [errorCliente, setErrorCliente] = useState<string | null>(null);
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
   const [medioPago, setMedioPago] = useState<"CONTADO" | "CREDITO" | "TRANSFERENCIA" | "DEBITO">("CONTADO");
   const [lineas, setLineas] = useState<Linea[]>([]);
@@ -57,13 +67,41 @@ export function VentaFormClient({
     if (!lineaActual.productoId || !lineaActual.cantidad || !lineaActual.precio) return;
     if (lineaActual.moneda === "USD" && !cotizacion) return;
     setLineas([...lineas, lineaActual]);
-    setLineaActual({ ...lineaActual, cantidad: "1", precio: "", descuento: "0" });
+    // Limpia también el producto elegido: si quedaba precargado, después
+    // de "Agregar" no quedaba claro que había que elegir uno nuevo antes
+    // de volver a tocar "Agregar" (se corría el riesgo de duplicar la
+    // línea sin querer).
+    setProductoActual(null);
+    setLineaActual({ productoId: "", nombre: "", cantidad: "1", precio: "", descuento: "0", tipoIva: "EXENTO", moneda: "UYU" });
   }
 
   // La lista de precio aplicable es la del cliente elegido: el servidor
   // devuelve el precio de esa lista si el producto tiene uno cargado, y si
   // no, el precio base. Siempre queda editable a mano después.
   const listaPrecioId = clientes.find((c) => c.id === clienteId)?.listaPrecioId ?? null;
+
+  // Alta rápida de cliente sin salir de la venta en curso: solo el nombre
+  // (mismos campos mínimos que /clientes/nuevo exige), el resto (RUT,
+  // teléfono, email, dirección, lista de precio) se completa después
+  // desde la ficha del cliente.
+  async function crearCliente(nombre: string) {
+    setCreandoCliente(true);
+    setErrorCliente(null);
+    const res = await fetch("/api/clientes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nombre }),
+    });
+    setCreandoCliente(false);
+    if (!res.ok) {
+      setErrorCliente((await res.json().catch(() => null))?.error ?? "No se pudo crear el cliente.");
+      return;
+    }
+    const { cliente } = await res.json();
+    setClientes((prev) => [...prev, cliente]);
+    setClienteId(cliente.id);
+    setNuevoClienteAbierto(false);
+  }
 
   function elegirProducto(p: ProductoOpcion) {
     setProductoActual(p);
@@ -170,7 +208,15 @@ export function VentaFormClient({
         <Card className="max-w-3xl">
           <h3 className="mb-4 text-sm font-semibold text-foreground">Datos de la venta</h3>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <FormField label="Cliente" required>
+            <FormField
+              label="Cliente"
+              required
+              action={
+                <button type="button" onClick={() => setNuevoClienteAbierto(true)} className="text-xs font-medium text-primary hover:underline">
+                  + Nuevo cliente
+                </button>
+              }
+            >
               <Select
                 value={clienteId}
                 onChange={async (e) => {
@@ -191,7 +237,7 @@ export function VentaFormClient({
                   }
                 }}
               >
-                {clientes.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                {clientesOrdenados.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
               </Select>
             </FormField>
             <FormField label="Fecha" required>
@@ -359,6 +405,18 @@ export function VentaFormClient({
           <Button type="button" variant="outline" onClick={() => router.push("/ventas")}>Cancelar</Button>
         </div>
       </form>
+
+      <PromptDialog
+        open={nuevoClienteAbierto}
+        title="Nuevo cliente"
+        label="Nombre"
+        placeholder="Ej: Juan Pérez"
+        confirmLabel="Crear y elegir"
+        loading={creandoCliente}
+        error={errorCliente}
+        onConfirm={crearCliente}
+        onCancel={() => { setNuevoClienteAbierto(false); setErrorCliente(null); }}
+      />
     </div>
   );
 }

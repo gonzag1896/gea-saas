@@ -65,7 +65,12 @@ export function CompraFormClient({
     if (!lineaActual.productoId || !lineaActual.cantidad || !lineaActual.costoUnitario) return;
     if (lineaActual.moneda === "USD" && !cotizacion) return;
     setLineas([...lineas, lineaActual]);
-    setLineaActual({ ...lineaActual, cantidad: "1", costoUnitario: "", descuento: "0" });
+    // Limpia también el producto elegido: si quedaba precargado, después
+    // de "Agregar" no quedaba claro que había que elegir uno nuevo antes
+    // de volver a tocar "Agregar" (se corría el riesgo de duplicar la
+    // línea sin querer).
+    setProductoActual(null);
+    setLineaActual({ productoId: "", nombre: "", cantidad: "1", costoUnitario: "", descuento: "0", tipoIva: "EXENTO", moneda: "UYU" });
   }
 
   // A diferencia de Ventas, acá el escaneo no agrega la línea solo:

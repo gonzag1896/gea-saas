@@ -58,6 +58,25 @@ describe("/api/productos/[id] — permisos separados por tipo de campo", () => {
     expect(res.status).toBe(200);
   });
 
+  it("Depósito puede cambiar el código (campo general) y buscar por el código nuevo", async () => {
+    sesionDe(deposito.id, ferreteria.id, "DEPOSITO");
+    const res = await patch(productoId, { codigo: "P-1-RENOMBRADO" });
+    expect(res.status).toBe(200);
+    const producto = await prisma.producto.findUnique({ where: { id: productoId } });
+    expect(producto?.codigo).toBe("P-1-RENOMBRADO");
+  });
+
+  it("rechaza cambiar el código a uno que ya usa otro producto de la misma ferretería", async () => {
+    sesionDe(dueno.id, ferreteria.id, "DUENO");
+    const subCategoria = await prisma.subCategoria.findFirstOrThrow({ where: { ferreteriaId: ferreteria.id } });
+    const marca = await prisma.marca.findFirstOrThrow({ where: { ferreteriaId: ferreteria.id } });
+    const otro = await prisma.producto.create({
+      data: { ferreteriaId: ferreteria.id, codigo: "P-OTRO", descripcion: "Otro", subCategoriaId: subCategoria.id, marcaId: marca.id, precioVenta: 10 },
+    });
+    const res = await patch(otro.id, { codigo: "P-1-RENOMBRADO" });
+    expect(res.status).toBe(409);
+  });
+
   it("Depósito NO puede cambiar el precio", async () => {
     sesionDe(deposito.id, ferreteria.id, "DEPOSITO");
     const res = await patch(productoId, { precioVenta: 999 });
