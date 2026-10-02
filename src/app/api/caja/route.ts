@@ -18,8 +18,10 @@ export async function POST(req: Request) {
       resultado.contexto.usuarioId,
       new Date(parsed.data.desde),
       new Date(parsed.data.hasta || parsed.data.desde),
-      parsed.data.montoInicial,
-      parsed.data.totalContado,
+      parsed.data.montoInicialUYU,
+      parsed.data.montoInicialUSD,
+      parsed.data.totalContadoUYU,
+      parsed.data.totalContadoUSD,
       parsed.data.observaciones,
     );
     return NextResponse.json({ cierre }, { status: 201 });

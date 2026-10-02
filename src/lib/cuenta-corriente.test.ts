@@ -33,18 +33,18 @@ describe("cuenta corriente — saldo y cobros", () => {
     await borrarFixture(ferreteria.id, [dueno.id]);
   });
 
-  it("un cliente sin movimientos tiene saldo 0", async () => {
+  it("un cliente sin movimientos tiene saldo 0 en las dos monedas", async () => {
     const otroCliente = await prisma.cliente.create({ data: { ferreteriaId: ferreteria.id, nombre: "Sin movimientos" } });
-    expect(await calcularSaldoCliente(ferreteria.id, otroCliente.id)).toBe(0);
+    expect(await calcularSaldoCliente(ferreteria.id, otroCliente.id)).toEqual({ saldoUYU: 0, saldoUSD: 0 });
   });
 
   it("registrar un cobro crea un Haber y baja el saldo exactamente ese monto", async () => {
     // Este cliente arranca en 0: un cobro sin deuda previa lo deja en
     // negativo (a favor del cliente) — no hay tope contra el saldo,
     // decisión pendiente #2 del informe, sin cerrar.
-    const antes = await calcularSaldoCliente(ferreteria.id, clienteId);
+    const antes = (await calcularSaldoCliente(ferreteria.id, clienteId)).saldoUYU;
     await registrarCobro(ferreteria.id, clienteId, 100, dueno.id, "Adelanto");
-    expect((await calcularSaldoCliente(ferreteria.id, clienteId)) - antes).toBe(-100);
+    expect((await calcularSaldoCliente(ferreteria.id, clienteId)).saldoUYU - antes).toBe(-100);
 
     const asiento = await prisma.cuentaCliente.findFirstOrThrow({ where: { clienteId, origenTipo: "COBRO" } });
     expect(Number(asiento.haber)).toBe(100);
@@ -60,8 +60,8 @@ describe("cuenta corriente — saldo y cobros", () => {
     const venta = await prisma.venta.create({
       data: {
         ferreteriaId: ferreteria.id, clienteId: clienteEscenario.id, fecha: new Date(), medioPago: "CREDITO",
-        subtotal: 1000, iva: 0, total: 1000,
-        detalle: { create: [{ productoId, cantidad: 10, precio: 100, total: 1000, totalVigente: 1000 }] },
+        subtotalUYU: 1000, ivaUYU: 0, totalUYU: 1000,
+        detalle: { create: [{ productoId, cantidad: 10, precio: 100, moneda: "UYU", total: 1000, totalVigente: 1000 }] },
       },
     });
     await confirmarVenta(ferreteria.id, venta.id, dueno.id); // Debe 1000
@@ -71,7 +71,7 @@ describe("cuenta corriente — saldo y cobros", () => {
     const detalle = await prisma.ventaDetalle.findFirstOrThrow({ where: { ventaId: venta.id } });
     await registrarDevolucionVenta(ferreteria.id, detalle.id, 2, "no era el color", dueno.id); // Haber 200 → saldo 400
 
-    expect(await calcularSaldoCliente(ferreteria.id, clienteEscenario.id)).toBe(400);
+    expect((await calcularSaldoCliente(ferreteria.id, clienteEscenario.id)).saldoUYU).toBe(400);
   });
 
   it("varios cobros y ventas a lo largo del tiempo acumulan correctamente", async () => {
@@ -81,8 +81,8 @@ describe("cuenta corriente — saldo y cobros", () => {
       const venta = await prisma.venta.create({
         data: {
           ferreteriaId: ferreteria.id, clienteId: clienteAcum.id, fecha: new Date(), medioPago: "CREDITO",
-          subtotal: total, iva: 0, total,
-          detalle: { create: [{ productoId, cantidad: 1, precio: total, total, totalVigente: total }] },
+          subtotalUYU: total, ivaUYU: 0, totalUYU: total,
+          detalle: { create: [{ productoId, cantidad: 1, precio: total, moneda: "UYU", total, totalVigente: total }] },
         },
       });
       await confirmarVenta(ferreteria.id, venta.id, dueno.id);
@@ -90,7 +90,7 @@ describe("cuenta corriente — saldo y cobros", () => {
     await registrarCobro(ferreteria.id, clienteAcum.id, 150, dueno.id);
 
     // 200 + 300 (Debe) - 150 (Haber) = 350
-    expect(await calcularSaldoCliente(ferreteria.id, clienteAcum.id)).toBe(350);
+    expect((await calcularSaldoCliente(ferreteria.id, clienteAcum.id)).saldoUYU).toBe(350);
   });
 
   it("clientesConSaldoVencido detecta un Debe de hace más de 30 días sin cancelar, e ignora al que ya está saldado o es reciente", async () => {
@@ -120,7 +120,24 @@ describe("cuenta corriente — saldo y cobros", () => {
     expect(ids).not.toContain(clienteReciente.id);
 
     const fila = vencidos.find((v) => v.id === clienteVencido.id)!;
-    expect(fila.saldo).toBe(500);
+    expect(fila.saldoUYU).toBe(500);
     expect(fila.diasVencido).toBeGreaterThanOrEqual(35);
+  });
+
+  it("un cobro en pesos y uno en dólares bajan cada saldo por separado, sin tocar el otro", async () => {
+    const clienteDual = await prisma.cliente.create({ data: { ferreteriaId: ferreteria.id, nombre: "Dual CC" } });
+    await prisma.cuentaCliente.create({
+      data: { ferreteriaId: ferreteria.id, clienteId: clienteDual.id, fecha: new Date(), debe: 500, haber: 0, moneda: "UYU", origenTipo: "VENTA_CREDITO" },
+    });
+    await prisma.cuentaCliente.create({
+      data: { ferreteriaId: ferreteria.id, clienteId: clienteDual.id, fecha: new Date(), debe: 20, haber: 0, moneda: "USD", origenTipo: "VENTA_CREDITO" },
+    });
+
+    await registrarCobro(ferreteria.id, clienteDual.id, 200, dueno.id, undefined, "CONTADO", "UYU");
+    const saldo = await calcularSaldoCliente(ferreteria.id, clienteDual.id);
+    expect(saldo).toEqual({ saldoUYU: 300, saldoUSD: 20 });
+
+    await registrarCobro(ferreteria.id, clienteDual.id, 20, dueno.id, undefined, "CONTADO", "USD");
+    expect(await calcularSaldoCliente(ferreteria.id, clienteDual.id)).toEqual({ saldoUYU: 300, saldoUSD: 0 });
   });
 });

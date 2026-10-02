@@ -41,10 +41,10 @@ describe("ventas — confirmar, anular, devolución, cuenta corriente", () => {
         clienteId,
         fecha: new Date(),
         medioPago,
-        subtotal: total,
-        iva: 0,
-        total,
-        detalle: { create: [{ productoId, cantidad, precio, total, totalVigente: total }] },
+        subtotalUYU: total,
+        ivaUYU: 0,
+        totalUYU: total,
+        detalle: { create: [{ productoId, cantidad, precio, moneda: "UYU", total, totalVigente: total }] },
       },
     });
   }
@@ -162,7 +162,7 @@ describe("ventas — confirmar, anular, devolución, cuenta corriente", () => {
       fecha: new Date().toISOString(),
       medioPago: "CONTADO",
       entrega: 0,
-      detalle: [{ productoId, cantidad: 5, precio: 100, descuento: 0 , tipoIva: "EXENTO" }],
+      detalle: [{ productoId, cantidad: 5, precio: 100, moneda: "UYU", descuento: 0, tipoIva: "EXENTO" }],
     });
 
     expect(venta.estado).toBe("CONFIRMADO");
@@ -178,7 +178,7 @@ describe("ventas — confirmar, anular, devolución, cuenta corriente", () => {
       fecha: new Date().toISOString(),
       medioPago: "CONTADO",
       entrega: 0,
-      detalle: [{ productoId, cantidad, precio: 100, descuento: 0 , tipoIva: "EXENTO" }],
+      detalle: [{ productoId, cantidad, precio: 100, moneda: "UYU", descuento: 0, tipoIva: "EXENTO" }],
     });
 
     expect(venta.estado).toBe("CONFIRMADO");
@@ -192,12 +192,48 @@ describe("ventas — confirmar, anular, devolución, cuenta corriente", () => {
       fecha: new Date().toISOString(),
       medioPago: "CONTADO",
       entrega: 0,
-      detalle: [{ productoId, cantidad: 4, precio: 100, descuento: 25 , tipoIva: "EXENTO" }],
+      detalle: [{ productoId, cantidad: 4, precio: 100, moneda: "UYU", descuento: 25, tipoIva: "EXENTO" }],
     });
 
-    expect(Number(venta.total)).toBe(300);
+    expect(Number(venta.totalUYU)).toBe(300);
     const detalle = await prisma.ventaDetalle.findFirstOrThrow({ where: { ventaId: venta.id } });
     expect(Number(detalle.descuento)).toBe(25);
     expect(Number(detalle.total)).toBe(300);
+  });
+
+  // Caso central de esta fase: pesos y dólares nunca se mezclan ni se
+  // convierten entre sí, ni al guardar la venta ni al asentarla en cuenta
+  // corriente ni al anularla.
+  it("una venta con líneas en pesos y en dólares suma cada moneda por separado, también en cuenta corriente y al anular", async () => {
+    const venta = await crearVentaConfirmada(ferreteria.id, dueno.id, {
+      clienteId,
+      fecha: new Date().toISOString(),
+      medioPago: "CREDITO",
+      entrega: 0,
+      detalle: [
+        { productoId, cantidad: 2, precio: 100, moneda: "UYU", descuento: 0, tipoIva: "EXENTO" }, // $200
+        { productoId, cantidad: 3, precio: 10, moneda: "USD", cotizacion: 42, descuento: 0, tipoIva: "EXENTO" }, // US$30
+      ],
+    });
+
+    expect(Number(venta.totalUYU)).toBe(200);
+    expect(Number(venta.totalUSD)).toBe(30);
+
+    const lineaUSD = await prisma.ventaDetalle.findFirstOrThrow({ where: { ventaId: venta.id, moneda: "USD" } });
+    expect(Number(lineaUSD.cotizacion)).toBe(42);
+    // La cotización es solo referencia: el total de la línea nunca se
+    // convierte a pesos.
+    expect(Number(lineaUSD.total)).toBe(30);
+
+    const debeUYU = await prisma.cuentaCliente.findFirstOrThrow({ where: { origenId: venta.id, moneda: "UYU" } });
+    const debeUSD = await prisma.cuentaCliente.findFirstOrThrow({ where: { origenId: venta.id, moneda: "USD" } });
+    expect(Number(debeUYU.debe)).toBe(200);
+    expect(Number(debeUSD.debe)).toBe(30);
+
+    await anularVenta(ferreteria.id, venta.id, dueno.id, "motivo");
+    const saldoUYU = await prisma.cuentaCliente.aggregate({ where: { clienteId, moneda: "UYU" }, _sum: { debe: true, haber: true } });
+    const saldoUSD = await prisma.cuentaCliente.aggregate({ where: { clienteId, moneda: "USD" }, _sum: { debe: true, haber: true } });
+    expect(Number(saldoUYU._sum.debe) - Number(saldoUYU._sum.haber)).toBe(0);
+    expect(Number(saldoUSD._sum.debe) - Number(saldoUSD._sum.haber)).toBe(0);
   });
 });

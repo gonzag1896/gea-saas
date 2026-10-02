@@ -8,7 +8,7 @@ import { ExportarButton } from "@/components/ui/ExportarButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { cn } from "@/lib/cn";
 
-type ClienteConSaldo = { id: string; nombre: string; telefono: string | null; saldo: number; diasVencido: number | null };
+type ClienteConSaldo = { id: string; nombre: string; telefono: string | null; saldoUYU: number; saldoUSD: number; diasVencido: number | null };
 type SortKey = "nombre" | "saldo";
 type SortDir = "asc" | "desc";
 
@@ -28,8 +28,10 @@ export function CuentaCorrienteClient({ clientes }: { clientes: ClienteConSaldo[
         aVal = a.nombre.toLowerCase();
         bVal = b.nombre.toLowerCase();
       } else {
-        aVal = a.saldo;
-        bVal = b.saldo;
+        // Ordena por el saldo en pesos — con deuda en las dos monedas a
+        // la vez no hay un único "mayor saldo" posible sin elegir una.
+        aVal = a.saldoUYU;
+        bVal = b.saldoUYU;
       }
 
       const result = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
@@ -110,7 +112,11 @@ export function CuentaCorrienteClient({ clientes }: { clientes: ClienteConSaldo[
 
             <tbody className="divide-y divide-gray-200">
               {clientesFiltrados.map((cliente) => {
-                const esDeuda = cliente.saldo > 0;
+                // Un cliente puede deber en pesos y tener crédito a favor
+                // en dólares (o viceversa) al mismo tiempo — "Debe"/
+                // "Crédito" se decide acá por el saldo en pesos, el badge
+                // de dólares (si lo hay) se muestra aparte, nunca mezclado.
+                const esDeuda = cliente.saldoUYU > 0;
                 const esVencido = cliente.diasVencido !== null && cliente.diasVencido > 0;
 
                 return (
@@ -128,12 +134,16 @@ export function CuentaCorrienteClient({ clientes }: { clientes: ClienteConSaldo[
 
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <span className={cn(
-                          "font-bold font-mono tabular-nums",
-                          esDeuda ? "text-red-600" : "text-green-600"
-                        )}>
-                          ${Math.abs(cliente.saldo).toFixed(2)}
-                        </span>
+                        <div>
+                          <div className={cn("font-bold font-mono tabular-nums", esDeuda ? "text-red-600" : "text-green-600")}>
+                            ${Math.abs(cliente.saldoUYU).toFixed(2)}
+                          </div>
+                          {cliente.saldoUSD !== 0 && (
+                            <div className={cn("font-mono text-xs tabular-nums", cliente.saldoUSD > 0 ? "text-red-500" : "text-green-500")}>
+                              US$ {Math.abs(cliente.saldoUSD).toFixed(2)}
+                            </div>
+                          )}
+                        </div>
                         {esDeuda
                           ? <TrendingUp className="h-4 w-4 text-red-500 flex-shrink-0" />
                           : <TrendingDown className="h-4 w-4 text-green-500 flex-shrink-0" />

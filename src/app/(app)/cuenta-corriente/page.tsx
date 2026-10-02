@@ -9,15 +9,27 @@ export default async function CuentaCorrientePage() {
   if (!contexto) redirect("/login");
 
   const { ferreteriaId } = contexto;
-  const [clientes, saldosPorCliente, vencidos] = await Promise.all([
+  const [clientes, saldosPorClienteYMoneda, vencidos] = await Promise.all([
     prisma.cliente.findMany({ where: { ferreteriaId }, select: { id: true, nombre: true, telefono: true }, orderBy: { nombre: "asc" } }),
-    prisma.cuentaCliente.groupBy({ by: ["clienteId"], where: { ferreteriaId }, _sum: { debe: true, haber: true } }),
+    prisma.cuentaCliente.groupBy({ by: ["clienteId", "moneda"], where: { ferreteriaId }, _sum: { debe: true, haber: true } }),
     clientesConSaldoVencido(ferreteriaId),
   ]);
 
-  const saldos = new Map(saldosPorCliente.map((s) => [s.clienteId, Number(s._sum.debe ?? 0) - Number(s._sum.haber ?? 0)]));
+  // Pesos y dólares nunca se mezclan: cada cliente tiene un saldo en pesos
+  // y uno en dólares, nunca convertidos entre sí.
+  const saldosUYU = new Map<string, number>();
+  const saldosUSD = new Map<string, number>();
+  for (const s of saldosPorClienteYMoneda) {
+    const monto = Number(s._sum.debe ?? 0) - Number(s._sum.haber ?? 0);
+    (s.moneda === "UYU" ? saldosUYU : saldosUSD).set(s.clienteId, monto);
+  }
   const diasVencidoPorCliente = new Map(vencidos.map((v) => [v.id, v.diasVencido]));
-  const filas = clientes.map((c) => ({ ...c, saldo: saldos.get(c.id) ?? 0, diasVencido: diasVencidoPorCliente.get(c.id) ?? null }));
+  const filas = clientes.map((c) => ({
+    ...c,
+    saldoUYU: saldosUYU.get(c.id) ?? 0,
+    saldoUSD: saldosUSD.get(c.id) ?? 0,
+    diasVencido: diasVencidoPorCliente.get(c.id) ?? null,
+  }));
 
   return <CuentaCorrienteClient clientes={filas} />;
 }

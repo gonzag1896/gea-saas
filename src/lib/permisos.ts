@@ -39,11 +39,13 @@ const MATRIZ: Record<Modulo, Record<RolFerreteria, Accion[]>> = {
   stock: { DUENO: ["ver"], CAJERO: ["ver"], DEPOSITO: ["ver"] },
   ajustesStock: { DUENO: ["ver", "crear"], CAJERO: [], DEPOSITO: ["ver", "crear"] },
   cuentaCorriente: { DUENO: ["ver"], CAJERO: ["ver"], DEPOSITO: [] },
-  cobros: { DUENO: ["ver", "crear"], CAJERO: ["crear"], DEPOSITO: [] },
+  // "anular" es exclusivo de Dueño, igual que anular una venta: Cajero
+  // registra cobros pero no los deshace.
+  cobros: { DUENO: ["ver", "crear", "anular"], CAJERO: ["crear"], DEPOSITO: [] },
   // Espejo de Cuenta Corriente/Cobros del lado de proveedores: solo Dueño
   // ve saldos y registra pagos — Depósito gestiona mercadería, no plata.
   cuentaProveedores: { DUENO: ["ver"], CAJERO: [], DEPOSITO: [] },
-  pagosProveedor: { DUENO: ["ver", "crear"], CAJERO: [], DEPOSITO: [] },
+  pagosProveedor: { DUENO: ["ver", "crear", "anular"], CAJERO: [], DEPOSITO: [] },
   // Igual criterio que Cobros: quien maneja el mostrador (Dueño y Cajero)
   // es quien cierra la caja. Depósito no maneja efectivo.
   // "modificar" es exclusivo de Dueño: corregir un cierre ya cargado

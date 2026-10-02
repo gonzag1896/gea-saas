@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/Input";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { cn } from "@/lib/cn";
 
-type ProveedorConSaldo = { id: string; nombre: string; telefono: string | null; saldo: number };
+type ProveedorConSaldo = { id: string; nombre: string; telefono: string | null; saldoUYU: number; saldoUSD: number };
 type SortKey = "nombre" | "saldo";
 type SortDir = "asc" | "desc";
 
@@ -27,8 +27,8 @@ export function CuentaCorrienteProveedoresClient({ proveedores }: { proveedores:
         aVal = a.nombre.toLowerCase();
         bVal = b.nombre.toLowerCase();
       } else {
-        aVal = a.saldo;
-        bVal = b.saldo;
+        aVal = a.saldoUYU;
+        bVal = b.saldoUYU;
       }
 
       const result = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
@@ -106,7 +106,7 @@ export function CuentaCorrienteProveedoresClient({ proveedores }: { proveedores:
 
             <tbody className="divide-y divide-gray-200">
               {proveedoresFiltrados.map((proveedor) => {
-                const esDeuda = proveedor.saldo > 0;
+                const esDeuda = proveedor.saldoUYU > 0;
 
                 return (
                   <tr
@@ -123,12 +123,16 @@ export function CuentaCorrienteProveedoresClient({ proveedores }: { proveedores:
 
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <span className={cn(
-                          "font-bold font-mono tabular-nums",
-                          esDeuda ? "text-red-600" : "text-green-600"
-                        )}>
-                          ${Math.abs(proveedor.saldo).toFixed(2)}
-                        </span>
+                        <div>
+                          <div className={cn("font-bold font-mono tabular-nums", esDeuda ? "text-red-600" : "text-green-600")}>
+                            ${Math.abs(proveedor.saldoUYU).toFixed(2)}
+                          </div>
+                          {proveedor.saldoUSD !== 0 && (
+                            <div className={cn("font-mono text-xs tabular-nums", proveedor.saldoUSD > 0 ? "text-red-500" : "text-green-500")}>
+                              US$ {Math.abs(proveedor.saldoUSD).toFixed(2)}
+                            </div>
+                          )}
+                        </div>
                         {esDeuda
                           ? <TrendingUp className="h-4 w-4 text-red-500 flex-shrink-0" />
                           : <TrendingDown className="h-4 w-4 text-green-500 flex-shrink-0" />

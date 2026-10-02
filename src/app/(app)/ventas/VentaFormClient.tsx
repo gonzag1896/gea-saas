@@ -159,12 +159,15 @@ export function VentaFormClient({
         clienteId,
         fecha: new Date(fecha).toISOString(),
         medioPago,
-        // El backend siempre guarda en pesos — una línea en dólares se
-        // convierte acá con la cotización configurada antes de mandarla.
+        // Cada línea viaja en su propia moneda, sin convertir — el
+        // servidor es quien calcula el total en pesos y el total en
+        // dólares, cada uno sumando solo sus propias líneas.
         detalle: lineas.map((l) => ({
           productoId: l.productoId,
           cantidad: Number(l.cantidad),
-          precio: l.moneda === "USD" ? Number(l.precio) * (cotizacion ?? 0) : Number(l.precio),
+          precio: Number(l.precio),
+          moneda: l.moneda,
+          cotizacion: l.moneda === "USD" ? cotizacion ?? undefined : undefined,
           descuento: Number(l.descuento),
           tipoIva: l.tipoIva,
         })),
@@ -181,14 +184,16 @@ export function VentaFormClient({
     return Number(l.cantidad) * Number(l.precio) * (1 - Number(l.descuento || 0) / 100);
   }
 
-  function totalLineaPesos(l: Linea) {
-    const monto = totalLinea(l);
-    return l.moneda === "USD" ? monto * (cotizacion ?? 0) : monto;
-  }
-
-  const subtotal = lineas.reduce((acc, l) => acc + totalLineaPesos(l), 0);
-  const iva = lineas.reduce((acc, l) => acc + (l.tipoIva === "TOTAL" ? totalLineaPesos(l) * 0.22 : 0), 0);
-  const total = subtotal + iva;
+  // Pesos y dólares nunca se mezclan: cada línea suma solo al acumulador
+  // de su propia moneda, igual que hace el servidor.
+  const lineasUYU = lineas.filter((l) => l.moneda === "UYU");
+  const lineasUSD = lineas.filter((l) => l.moneda === "USD");
+  const subtotalUYU = lineasUYU.reduce((acc, l) => acc + totalLinea(l), 0);
+  const subtotalUSD = lineasUSD.reduce((acc, l) => acc + totalLinea(l), 0);
+  const ivaUYU = lineasUYU.reduce((acc, l) => acc + (l.tipoIva === "TOTAL" ? totalLinea(l) * 0.22 : 0), 0);
+  const ivaUSD = lineasUSD.reduce((acc, l) => acc + (l.tipoIva === "TOTAL" ? totalLinea(l) * 0.22 : 0), 0);
+  const totalUYU = subtotalUYU + ivaUYU;
+  const totalUSD = subtotalUSD + ivaUSD;
   const hayLineaConIva = lineas.some((l) => l.tipoIva === "TOTAL");
 
   if (clientes.length === 0 || !hayProductos) {
@@ -373,8 +378,7 @@ export function VentaFormClient({
                           </Select>
                         </Table.Cell>
                         <Table.Cell className="font-mono tabular-nums">
-                          $ {formatoMoneda(totalLineaPesos(l))}
-                          {l.moneda === "USD" && <div className="text-xs font-normal text-muted-foreground">US$ {formatoMoneda(totalLinea(l))}</div>}
+                          {l.moneda === "USD" ? "US$" : "$"} {formatoMoneda(totalLinea(l))}
                         </Table.Cell>
                         <Table.Cell>
                           <Button type="button" variant="icon" className="h-8 w-8" aria-label="Quitar línea" onClick={() => quitarLinea(i)}>
@@ -386,12 +390,22 @@ export function VentaFormClient({
                   </tbody>
                 </Table>
                 <p className="mt-3 text-right text-sm text-muted-foreground">
-                  Subtotal{hayLineaConIva ? " sin IVA" : ""}: <span className="font-mono font-semibold tabular-nums text-foreground">$ {formatoMoneda(subtotal)}</span>
+                  Subtotal{hayLineaConIva ? " sin IVA" : ""}:{" "}
+                  <span className="font-mono font-semibold tabular-nums text-foreground">
+                    $ {formatoMoneda(subtotalUYU)}{subtotalUSD !== 0 && <> · US$ {formatoMoneda(subtotalUSD)}</>}
+                  </span>
                   {hayLineaConIva && (
-                    <> · IVA: <span className="font-mono font-semibold tabular-nums text-foreground">$ {formatoMoneda(iva)}</span></>
+                    <>
+                      {" "}· IVA:{" "}
+                      <span className="font-mono font-semibold tabular-nums text-foreground">
+                        $ {formatoMoneda(ivaUYU)}{ivaUSD !== 0 && <> · US$ {formatoMoneda(ivaUSD)}</>}
+                      </span>
+                    </>
                   )}
                   {" · "}
-                  <span className="font-semibold text-foreground">Total: <span className="font-mono tabular-nums">$ {formatoMoneda(total)}</span></span>
+                  <span className="font-semibold text-foreground">
+                    Total: <span className="font-mono tabular-nums">$ {formatoMoneda(totalUYU)}{totalUSD !== 0 && <> · US$ {formatoMoneda(totalUSD)}</>}</span>
+                  </span>
                 </p>
               </>
             )}

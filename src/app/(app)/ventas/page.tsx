@@ -11,11 +11,11 @@ export default async function VentasPage() {
   const { ferreteriaId } = contexto;
   const ventasRaw = await prisma.venta.findMany({
     where: { ferreteriaId },
-    select: { id: true, fecha: true, estado: true, medioPago: true, total: true, cliente: { select: { nombre: true } } },
+    select: { id: true, fecha: true, estado: true, medioPago: true, totalUYU: true, totalUSD: true, cliente: { select: { nombre: true } } },
     orderBy: { fecha: "desc" },
   });
 
-  const ventas = ventasRaw.map((v) => ({ ...v, total: v.total.toString() }));
+  const ventas = ventasRaw.map((v) => ({ ...v, totalUYU: v.totalUYU.toString(), totalUSD: v.totalUSD.toString() }));
 
   return (
     <VentasClient

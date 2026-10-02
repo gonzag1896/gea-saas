@@ -23,10 +23,15 @@ function rangoDe(desde: Date, hasta: Date) {
   return { inicio, fin };
 }
 
-export type EsperadoCaja = { totalVentasContado: number; totalCobrosContado: number; totalEsperado: number };
+export type EsperadoCaja = {
+  totalVentasContadoUYU: number; totalVentasContadoUSD: number;
+  totalCobrosContadoUYU: number; totalCobrosContadoUSD: number;
+  totalEsperadoUYU: number; totalEsperadoUSD: number;
+};
 
 // Lo único que entra como billete físico a la caja: ventas Contado ya
-// confirmadas más los cobros de cuenta corriente marcados Contado.
+// confirmadas más los cobros de cuenta corriente marcados Contado, cada
+// moneda por separado (el cajón puede tener pesos y dólares a la vez).
 // Crédito, Transferencia y **Débito** quedan afuera a propósito: una
 // venta con tarjeta de débito no pone billetes en el cajón, el banco la
 // acredita aparte — contarla acá inflaría el esperado contra plata que
@@ -37,29 +42,55 @@ export async function calcularEsperadoCaja(ferreteriaId: string, desde: Date, ha
   const [ventas, cobros] = await Promise.all([
     prisma.venta.aggregate({
       where: { ferreteriaId, estado: "CONFIRMADO", medioPago: "CONTADO", fecha: { gte: inicio, lt: fin } },
-      _sum: { total: true },
+      _sum: { totalUYU: true, totalUSD: true },
     }),
-    prisma.cuentaCliente.aggregate({
-      where: { ferreteriaId, origenTipo: "COBRO", medioPago: "CONTADO", fecha: { gte: inicio, lt: fin } },
-      _sum: { haber: true },
+    // Cobros en efectivo del período, netos de las anulaciones hechas en el
+    // período: un cobro anulado resta (Debe de ANULACION_COBRO) el día en
+    // que se anula, no el día del cobro original — los cierres ya hechos
+    // no se recalculan.
+    prisma.cuentaCliente.findMany({
+      where: { ferreteriaId, origenTipo: { in: ["COBRO", "ANULACION_COBRO"] }, medioPago: "CONTADO", fecha: { gte: inicio, lt: fin } },
+      select: { moneda: true, origenTipo: true, haber: true, debe: true, montoRecibido: true, monedaRecibida: true },
     }),
   ]);
 
-  const totalVentasContado = Number(ventas._sum.total ?? 0);
-  const totalCobrosContado = Number(cobros._sum.haber ?? 0);
-  return { totalVentasContado, totalCobrosContado, totalEsperado: totalVentasContado + totalCobrosContado };
+  // Caja cuenta lo que realmente entró al cajón: en un cobro cruzado (deuda
+  // en pesos pagada con dólares) es el monto recibido en su moneda, no el
+  // equivalente que bajó la deuda.
+  const cobroPorMoneda = new Map<string, number>();
+  for (const c of cobros) {
+    const moneda = c.monedaRecibida ?? c.moneda;
+    const monto = c.montoRecibido !== null ? Number(c.montoRecibido) : Number(c.origenTipo === "COBRO" ? c.haber : c.debe);
+    cobroPorMoneda.set(moneda, (cobroPorMoneda.get(moneda) ?? 0) + (c.origenTipo === "COBRO" ? monto : -monto));
+  }
+  const totalVentasContadoUYU = Number(ventas._sum.totalUYU ?? 0);
+  const totalVentasContadoUSD = Number(ventas._sum.totalUSD ?? 0);
+  const totalCobrosContadoUYU = cobroPorMoneda.get("UYU") ?? 0;
+  const totalCobrosContadoUSD = cobroPorMoneda.get("USD") ?? 0;
+  return {
+    totalVentasContadoUYU, totalVentasContadoUSD,
+    totalCobrosContadoUYU, totalCobrosContadoUSD,
+    totalEsperadoUYU: totalVentasContadoUYU + totalCobrosContadoUYU,
+    totalEsperadoUSD: totalVentasContadoUSD + totalCobrosContadoUSD,
+  };
 }
 
 export type Cierre = {
   id: string;
   fecha: Date;
   fechaHasta: Date;
-  montoInicial: number;
-  totalVentasContado: number;
-  totalCobrosContado: number;
-  totalEsperado: number;
-  totalContado: number;
-  diferencia: number;
+  montoInicialUYU: number;
+  montoInicialUSD: number;
+  totalVentasContadoUYU: number;
+  totalVentasContadoUSD: number;
+  totalCobrosContadoUYU: number;
+  totalCobrosContadoUSD: number;
+  totalEsperadoUYU: number;
+  totalEsperadoUSD: number;
+  totalContadoUYU: number;
+  totalContadoUSD: number;
+  diferenciaUYU: number;
+  diferenciaUSD: number;
   observaciones: string | null;
 };
 
@@ -73,12 +104,18 @@ export async function listarCierres(ferreteriaId: string, limite = 30): Promise<
     id: f.id,
     fecha: f.fecha,
     fechaHasta: f.fechaHasta,
-    montoInicial: Number(f.montoInicial),
-    totalVentasContado: Number(f.totalVentasContado),
-    totalCobrosContado: Number(f.totalCobrosContado),
-    totalEsperado: Number(f.totalEsperado),
-    totalContado: Number(f.totalContado),
-    diferencia: Number(f.diferencia),
+    montoInicialUYU: Number(f.montoInicialUYU),
+    montoInicialUSD: Number(f.montoInicialUSD),
+    totalVentasContadoUYU: Number(f.totalVentasContadoUYU),
+    totalVentasContadoUSD: Number(f.totalVentasContadoUSD),
+    totalCobrosContadoUYU: Number(f.totalCobrosContadoUYU),
+    totalCobrosContadoUSD: Number(f.totalCobrosContadoUSD),
+    totalEsperadoUYU: Number(f.totalEsperadoUYU),
+    totalEsperadoUSD: Number(f.totalEsperadoUSD),
+    totalContadoUYU: Number(f.totalContadoUYU),
+    totalContadoUSD: Number(f.totalContadoUSD),
+    diferenciaUYU: Number(f.diferenciaUYU),
+    diferenciaUSD: Number(f.diferenciaUSD),
     observaciones: f.observaciones,
   }));
 }
@@ -109,8 +146,10 @@ export async function registrarCierreCaja(
   usuarioId: string,
   desde: Date,
   hasta: Date,
-  montoInicial: number,
-  totalContado: number,
+  montoInicialUYU: number,
+  montoInicialUSD: number,
+  totalContadoUYU: number,
+  totalContadoUSD: number,
   observaciones: string | undefined,
 ) {
   if (inicioDelDia(hasta).getTime() < inicioDelDia(desde).getTime()) {
@@ -120,21 +159,33 @@ export async function registrarCierreCaja(
     throw new EstadoInvalidoError("Ya hay un cierre de caja que cubre parte de ese rango de fechas.");
   }
 
-  const { totalVentasContado, totalCobrosContado, totalEsperado: esperadoDelPeriodo } = await calcularEsperadoCaja(ferreteriaId, desde, hasta);
-  const totalEsperado = montoInicial + esperadoDelPeriodo;
-  const diferencia = totalContado - totalEsperado;
+  const {
+    totalVentasContadoUYU, totalVentasContadoUSD,
+    totalCobrosContadoUYU, totalCobrosContadoUSD,
+    totalEsperadoUYU: esperadoDelPeriodoUYU, totalEsperadoUSD: esperadoDelPeriodoUSD,
+  } = await calcularEsperadoCaja(ferreteriaId, desde, hasta);
+  const totalEsperadoUYU = montoInicialUYU + esperadoDelPeriodoUYU;
+  const totalEsperadoUSD = montoInicialUSD + esperadoDelPeriodoUSD;
+  const diferenciaUYU = totalContadoUYU - totalEsperadoUYU;
+  const diferenciaUSD = totalContadoUSD - totalEsperadoUSD;
 
   const cierre = await prisma.cierreCaja.create({
     data: {
       ferreteriaId,
       fecha: inicioDelDia(desde),
       fechaHasta: inicioDelDia(hasta),
-      montoInicial,
-      totalVentasContado,
-      totalCobrosContado,
-      totalEsperado,
-      totalContado,
-      diferencia,
+      montoInicialUYU,
+      montoInicialUSD,
+      totalVentasContadoUYU,
+      totalVentasContadoUSD,
+      totalCobrosContadoUYU,
+      totalCobrosContadoUSD,
+      totalEsperadoUYU,
+      totalEsperadoUSD,
+      totalContadoUYU,
+      totalContadoUSD,
+      diferenciaUYU,
+      diferenciaUSD,
       observaciones,
       registradoPorUsuarioId: usuarioId,
     },
@@ -146,7 +197,7 @@ export async function registrarCierreCaja(
     ferreteriaId,
     entidad: "CierreCaja",
     entidadId: cierre.id,
-    detalle: { montoInicial, totalEsperado, totalContado, diferencia },
+    detalle: { montoInicialUYU, montoInicialUSD, totalEsperadoUYU, totalEsperadoUSD, totalContadoUYU, totalContadoUSD, diferenciaUYU, diferenciaUSD },
   });
 
   return cierre;
@@ -154,31 +205,39 @@ export async function registrarCierreCaja(
 
 // Corrige un cierre ya cargado (error de tipeo en el monto contado, se
 // olvidaron de cargar el fondo inicial, etc.) — nunca reprocesa las
-// ventas/cobros del período (totalVentasContado/totalCobrosContado quedan
-// como estaban), solo recalcula esperado/diferencia si montoInicial o
-// totalContado cambiaron. Restringido a Dueño (permiso "caja"/"modificar")
-// en la capa de arriba — acá solo la lógica de negocio.
+// ventas/cobros del período (totalVentasContado*/totalCobrosContado*
+// quedan como estaban), solo recalcula esperado/diferencia de cada moneda
+// si cambió algo de esa moneda. Restringido a Dueño (permiso
+// "caja"/"modificar") en la capa de arriba — acá solo la lógica de negocio.
 export async function actualizarCierreCaja(
   ferreteriaId: string,
   cierreId: string,
   usuarioId: string,
-  cambios: { montoInicial?: number; totalContado?: number; observaciones?: string },
+  cambios: { montoInicialUYU?: number; montoInicialUSD?: number; totalContadoUYU?: number; totalContadoUSD?: number; observaciones?: string },
 ) {
   const cierre = await prisma.cierreCaja.findUnique({ where: { id: cierreId } });
   if (!cierre || cierre.ferreteriaId !== ferreteriaId) throw new EntidadNoEncontradaError("Cierre de caja no encontrado.");
 
-  const montoInicial = cambios.montoInicial ?? Number(cierre.montoInicial);
-  const totalContado = cambios.totalContado ?? Number(cierre.totalContado);
-  const totalEsperado = montoInicial + Number(cierre.totalVentasContado) + Number(cierre.totalCobrosContado);
-  const diferencia = totalContado - totalEsperado;
+  const montoInicialUYU = cambios.montoInicialUYU ?? Number(cierre.montoInicialUYU);
+  const montoInicialUSD = cambios.montoInicialUSD ?? Number(cierre.montoInicialUSD);
+  const totalContadoUYU = cambios.totalContadoUYU ?? Number(cierre.totalContadoUYU);
+  const totalContadoUSD = cambios.totalContadoUSD ?? Number(cierre.totalContadoUSD);
+  const totalEsperadoUYU = montoInicialUYU + Number(cierre.totalVentasContadoUYU) + Number(cierre.totalCobrosContadoUYU);
+  const totalEsperadoUSD = montoInicialUSD + Number(cierre.totalVentasContadoUSD) + Number(cierre.totalCobrosContadoUSD);
+  const diferenciaUYU = totalContadoUYU - totalEsperadoUYU;
+  const diferenciaUSD = totalContadoUSD - totalEsperadoUSD;
 
   const actualizado = await prisma.cierreCaja.update({
     where: { id: cierreId },
     data: {
-      montoInicial,
-      totalContado,
-      totalEsperado,
-      diferencia,
+      montoInicialUYU,
+      montoInicialUSD,
+      totalContadoUYU,
+      totalContadoUSD,
+      totalEsperadoUYU,
+      totalEsperadoUSD,
+      diferenciaUYU,
+      diferenciaUSD,
       observaciones: cambios.observaciones !== undefined ? cambios.observaciones : cierre.observaciones,
       actualizadoPorUsuarioId: usuarioId,
     },
@@ -190,7 +249,7 @@ export async function actualizarCierreCaja(
     ferreteriaId,
     entidad: "CierreCaja",
     entidadId: cierreId,
-    detalle: { montoInicial, totalContado, totalEsperado, diferencia },
+    detalle: { montoInicialUYU, montoInicialUSD, totalContadoUYU, totalContadoUSD, totalEsperadoUYU, totalEsperadoUSD, diferenciaUYU, diferenciaUSD },
   });
 
   return actualizado;

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import {
@@ -20,6 +21,16 @@ function formatoMoneda(n: number) {
   return n.toLocaleString("es-UY", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
+// "$ X" y, si hay dólares, una segunda línea chica "US$ Y" al lado.
+function valorDual(uyu: number, usd: number) {
+  return (
+    <>
+      $ {formatoMoneda(uyu)}
+      {usd !== 0 && <span className="ml-1.5 text-sm font-normal text-muted-foreground">US$ {formatoMoneda(usd)}</span>}
+    </>
+  );
+}
+
 const TONOS = {
   primary: "bg-primary/10 text-primary",
   warning: "bg-orange-50 text-orange-600",
@@ -34,7 +45,7 @@ const TONOS = {
 function KpiCard({
   icon: Icon, label, valor, sub, tono = "primary", href,
 }: {
-  icon: typeof TrendingUp; label: string; valor: string; sub?: string; tono?: keyof typeof TONOS; href?: string;
+  icon: typeof TrendingUp; label: string; valor: ReactNode; sub?: string; tono?: keyof typeof TONOS; href?: string;
 }) {
   const contenido = (
     <Card
@@ -110,7 +121,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
     puedeVerVentas ? topProductosVendidos(ferreteriaId, desde, hasta) : Promise.resolve(null),
   ]);
 
-  const margenMes = ventasMes !== null && comprasMes !== null ? ventasMes - comprasMes : null;
+  const margenMes = ventasMes !== null && comprasMes !== null
+    ? { uyu: ventasMes.uyu - comprasMes.uyu, usd: ventasMes.usd - comprasMes.usd }
+    : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -122,14 +135,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
       <div>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Hoy</h2>
         <div className="flex flex-wrap gap-4">
-          {ventasHoy !== null && <KpiCard icon={Zap} label="Ventas de hoy" valor={`$ ${formatoMoneda(ventasHoy)}`} href="/ventas" />}
-          {comprasHoy !== null && <KpiCard icon={ShoppingCart} label="Compras de hoy" valor={`$ ${formatoMoneda(comprasHoy)}`} href="/compras" />}
+          {ventasHoy !== null && <KpiCard icon={Zap} label="Ventas de hoy" valor={valorDual(ventasHoy.uyu, ventasHoy.usd)} href="/ventas" />}
+          {comprasHoy !== null && <KpiCard icon={ShoppingCart} label="Compras de hoy" valor={valorDual(comprasHoy.uyu, comprasHoy.usd)} href="/compras" />}
           {porCobrar !== null && (
             <KpiCard
               icon={Wallet}
               label="Por cobrar (cuenta corriente)"
-              valor={`$ ${formatoMoneda(porCobrar)}`}
-              tono={porCobrar > 0 ? "warning" : "primary"}
+              valor={valorDual(porCobrar.uyu, porCobrar.usd)}
+              tono={porCobrar.uyu > 0 || porCobrar.usd > 0 ? "warning" : "primary"}
               href="/cuenta-corriente"
             />
           )}
@@ -157,15 +170,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
       <div>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">Este mes</h2>
         <div className="flex flex-wrap gap-4">
-          {ventasMes !== null && <KpiCard icon={TrendingUp} label="Ventas en el mes" valor={`$ ${formatoMoneda(ventasMes)}`} href="/ventas" />}
-          {comprasMes !== null && <KpiCard icon={ShoppingCart} label="Compras en el mes" valor={`$ ${formatoMoneda(comprasMes)}`} href="/compras" />}
+          {ventasMes !== null && <KpiCard icon={TrendingUp} label="Ventas en el mes" valor={valorDual(ventasMes.uyu, ventasMes.usd)} href="/ventas" />}
+          {comprasMes !== null && <KpiCard icon={ShoppingCart} label="Compras en el mes" valor={valorDual(comprasMes.uyu, comprasMes.usd)} href="/compras" />}
           {margenMes !== null && (
             <KpiCard
-              icon={margenMes > 0 ? TrendingUp : margenMes < 0 ? TrendingDown : Minus}
+              icon={margenMes.uyu > 0 ? TrendingUp : margenMes.uyu < 0 ? TrendingDown : Minus}
               label="Margen bruto del mes"
-              valor={`${margenMes >= 0 ? "" : "-"}$ ${formatoMoneda(Math.abs(margenMes))}`}
-              sub="Ventas − Compras confirmadas"
-              tono={margenMes > 0 ? "success" : margenMes < 0 ? "danger" : "muted"}
+              valor={`${margenMes.uyu >= 0 ? "" : "-"}$ ${formatoMoneda(Math.abs(margenMes.uyu))}`}
+              sub={`Ventas menos compras confirmadas${margenMes.usd !== 0 ? ` (y ${margenMes.usd >= 0 ? "" : "-"}US$ ${formatoMoneda(Math.abs(margenMes.usd))})` : ""}`}
+              tono={margenMes.uyu > 0 ? "success" : margenMes.uyu < 0 ? "danger" : "muted"}
             />
           )}
         </div>
@@ -181,7 +194,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: { 
                   <span className="font-medium text-foreground">{c.nombre}</span>
                   <span className="ml-2 text-muted-foreground">hace {c.diasVencido} días</span>
                 </div>
-                <span className="font-mono tabular-nums text-warning">$ {formatoMoneda(c.saldo)}</span>
+                <span className="font-mono tabular-nums text-warning">
+                  {c.saldoUYU > 0 && <>$ {formatoMoneda(c.saldoUYU)} </>}
+                  {c.saldoUSD > 0 && <>US$ {formatoMoneda(c.saldoUSD)}</>}
+                </span>
               </Link>
             ))}
           </div>

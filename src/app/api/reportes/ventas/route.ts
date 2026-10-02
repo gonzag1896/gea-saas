@@ -9,7 +9,8 @@ type FilaVenta = {
   cliente: string;
   medioPago: string;
   estado: string;
-  total: number;
+  totalUYU: number;
+  totalUSD: number;
 };
 
 const COLUMNAS: ColumnaReporte<FilaVenta>[] = [
@@ -17,7 +18,8 @@ const COLUMNAS: ColumnaReporte<FilaVenta>[] = [
   { header: "Cliente", value: (v) => v.cliente, anchoExcel: 30, anchoPdf: 160 },
   { header: "Medio de pago", value: (v) => v.medioPago, anchoExcel: 16, anchoPdf: 90 },
   { header: "Estado", value: (v) => v.estado, anchoExcel: 14, anchoPdf: 70 },
-  { header: "Total", value: (v) => v.total, anchoExcel: 14, anchoPdf: 70, alineacion: "right" },
+  { header: "Total $", value: (v) => v.totalUYU, anchoExcel: 14, anchoPdf: 70, alineacion: "right" },
+  { header: "Total US$", value: (v) => v.totalUSD, anchoExcel: 14, anchoPdf: 70, alineacion: "right" },
 ];
 
 export async function GET(req: Request) {
@@ -26,7 +28,7 @@ export async function GET(req: Request) {
 
   const ventasRaw = await prisma.venta.findMany({
     where: { ferreteriaId: resultado.contexto.ferreteriaId },
-    select: { fecha: true, estado: true, medioPago: true, total: true, cliente: { select: { nombre: true } } },
+    select: { fecha: true, estado: true, medioPago: true, totalUYU: true, totalUSD: true, cliente: { select: { nombre: true } } },
     orderBy: { fecha: "desc" },
   });
 
@@ -35,7 +37,8 @@ export async function GET(req: Request) {
     cliente: v.cliente.nombre,
     medioPago: v.medioPago,
     estado: v.estado,
-    total: Number(v.total),
+    totalUYU: Number(v.totalUYU),
+    totalUSD: Number(v.totalUSD),
   }));
 
   const { searchParams } = new URL(req.url);

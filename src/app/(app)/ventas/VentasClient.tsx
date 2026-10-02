@@ -24,7 +24,8 @@ type Venta = {
   fecha: Date;
   estado: Estado;
   medioPago: MedioPago;
-  total: string;
+  totalUYU: string;
+  totalUSD: string;
   cliente: { nombre: string };
 };
 type SortKey = "fecha" | "total";
@@ -108,7 +109,8 @@ export function VentasClient({
   const pendientes = ventasIniciales.filter((v) => v.estado === "PENDIENTE");
   const confirmadas = ventasIniciales.filter((v) => v.estado === "CONFIRMADO");
   const anuladas = ventasIniciales.filter((v) => v.estado === "ANULADO");
-  const totalConfirmado = confirmadas.reduce((acc, v) => acc + Number(v.total), 0);
+  const totalConfirmadoUYU = confirmadas.reduce((acc, v) => acc + Number(v.totalUYU), 0);
+  const totalConfirmadoUSD = confirmadas.reduce((acc, v) => acc + Number(v.totalUSD), 0);
 
   const ventasFiltradas = useMemo(() => {
     const filtered = ventasIniciales.filter((v) =>
@@ -118,7 +120,7 @@ export function VentasClient({
     filtered.sort((a, b) => {
       const cmp = sortKey === "fecha"
         ? new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
-        : Number(a.total) - Number(b.total);
+        : Number(a.totalUYU) - Number(b.totalUYU);
       return sortDir === "asc" ? cmp : -cmp;
     });
 
@@ -191,7 +193,13 @@ export function VentasClient({
 
       <div className="flex flex-wrap gap-3">
         <StatCard icon={Clock} label="Pendientes de confirmar" valor={String(pendientes.length)} tono={pendientes.length > 0 ? "warning" : "primary"} />
-        <StatCard icon={CheckCircle2} label="Confirmadas" valor={String(confirmadas.length)} sub={`$ ${formatoMoneda(totalConfirmado)} en total`} tono="primary" />
+        <StatCard
+          icon={CheckCircle2}
+          label="Confirmadas"
+          valor={String(confirmadas.length)}
+          sub={`$ ${formatoMoneda(totalConfirmadoUYU)}${totalConfirmadoUSD !== 0 ? ` · US$ ${formatoMoneda(totalConfirmadoUSD)}` : ""} en total`}
+          tono="primary"
+        />
         <StatCard icon={XCircle} label="Anuladas" valor={String(anuladas.length)} tono="muted" />
       </div>
 
@@ -261,8 +269,11 @@ export function VentasClient({
                     <td className="px-4 py-3 text-right">
                       <div className="flex flex-col items-end gap-0.5">
                         <span className="font-bold font-mono tabular-nums text-foreground">
-                          $ {formatoMoneda(Number(venta.total))}
+                          $ {formatoMoneda(Number(venta.totalUYU))}
                         </span>
+                        {Number(venta.totalUSD) !== 0 && (
+                          <span className="font-mono text-xs tabular-nums text-muted-foreground">US$ {formatoMoneda(Number(venta.totalUSD))}</span>
+                        )}
                         <MedioPagoTag medioPago={venta.medioPago} />
                       </div>
                     </td>

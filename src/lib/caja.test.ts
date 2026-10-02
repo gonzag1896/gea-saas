@@ -35,12 +35,12 @@ describe("caja — esperado y cierre diario", () => {
     await borrarFixture(ferreteria.id, [dueno.id]);
   });
 
-  async function ventaConfirmada(medioPago: "CONTADO" | "CREDITO" | "TRANSFERENCIA", total: number) {
+  async function ventaConfirmada(medioPago: "CONTADO" | "CREDITO" | "TRANSFERENCIA", total: number, moneda: "UYU" | "USD" = "UYU") {
     await prisma.venta.create({
       data: {
         ferreteriaId: ferreteria.id, clienteId, fecha: hoy, medioPago, estado: "CONFIRMADO",
-        subtotal: total, iva: 0, total,
-        detalle: { create: [{ productoId, cantidad: 1, precio: total, total, totalVigente: total }] },
+        ...(moneda === "UYU" ? { subtotalUYU: total, ivaUYU: 0, totalUYU: total } : { subtotalUSD: total, ivaUSD: 0, totalUSD: total }),
+        detalle: { create: [{ productoId, cantidad: 1, precio: total, moneda, total, totalVigente: total }] },
       },
     });
   }
@@ -53,31 +53,45 @@ describe("caja — esperado y cierre diario", () => {
     await registrarCobro(ferreteria.id, clienteId, 900, dueno.id, undefined, "TRANSFERENCIA");
 
     const esperado = await calcularEsperadoCaja(ferreteria.id, hoy);
-    expect(esperado.totalVentasContado).toBe(1000);
-    expect(esperado.totalCobrosContado).toBe(200);
-    expect(esperado.totalEsperado).toBe(1200);
+    expect(esperado.totalVentasContadoUYU).toBe(1000);
+    expect(esperado.totalCobrosContadoUYU).toBe(200);
+    expect(esperado.totalEsperadoUYU).toBe(1200);
+  });
+
+  it("calcularEsperadoCaja lleva pesos y dólares por separado, sin mezclarlos", async () => {
+    await ventaConfirmada("CONTADO", 40, "USD");
+    await registrarCobro(ferreteria.id, clienteId, 10, dueno.id, undefined, "CONTADO", "USD");
+
+    const esperado = await calcularEsperadoCaja(ferreteria.id, hoy);
+    expect(esperado.totalVentasContadoUSD).toBe(40);
+    expect(esperado.totalCobrosContadoUSD).toBe(10);
+    expect(esperado.totalEsperadoUSD).toBe(50);
+    // Lo ya verificado en pesos en el test anterior no cambió por esto.
+    expect(esperado.totalEsperadoUYU).toBe(1200);
   });
 
   it("registrarCierreCaja suma el fondo inicial al esperado, calcula la diferencia y bloquea un segundo cierre que se solape", async () => {
-    const cierre = await registrarCierreCaja(ferreteria.id, dueno.id, hoy, hoy, 100, 1250, "Faltaron $50");
-    expect(Number(cierre.totalEsperado)).toBe(1300); // 100 de fondo + 1200 del día
-    expect(Number(cierre.diferencia)).toBe(-50);
+    const cierre = await registrarCierreCaja(ferreteria.id, dueno.id, hoy, hoy, 100, 0, 1250, 50, "Faltaron $50");
+    expect(Number(cierre.totalEsperadoUYU)).toBe(1300); // 100 de fondo + 1200 del día
+    expect(Number(cierre.diferenciaUYU)).toBe(-50);
+    expect(Number(cierre.totalEsperadoUSD)).toBe(50); // sin fondo inicial en dólares
+    expect(Number(cierre.diferenciaUSD)).toBe(0);
 
-    await expect(registrarCierreCaja(ferreteria.id, dueno.id, hoy, hoy, 0, 1200, undefined)).rejects.toThrow(EstadoInvalidoError);
+    await expect(registrarCierreCaja(ferreteria.id, dueno.id, hoy, hoy, 0, 0, 1200, 0, undefined)).rejects.toThrow(EstadoInvalidoError);
 
-    const editado = await actualizarCierreCaja(ferreteria.id, cierre.id, dueno.id, { montoInicial: 0, totalContado: 1200 });
-    expect(Number(editado.totalEsperado)).toBe(1200); // sin fondo inicial
-    expect(Number(editado.diferencia)).toBe(0);
+    const editado = await actualizarCierreCaja(ferreteria.id, cierre.id, dueno.id, { montoInicialUYU: 0, totalContadoUYU: 1200 });
+    expect(Number(editado.totalEsperadoUYU)).toBe(1200); // sin fondo inicial
+    expect(Number(editado.diferenciaUYU)).toBe(0);
   });
 
   it("registrarCierreCaja acepta un rango de varios días y lo bloquea si se solapa con uno ya cerrado", async () => {
     const antier = new Date(hoy.getTime() - 2 * 24 * 60 * 60 * 1000);
     const ayer = new Date(hoy.getTime() - 24 * 60 * 60 * 1000);
 
-    const cierre = await registrarCierreCaja(ferreteria.id, dueno.id, antier, ayer, 0, 0, "Cierre de 2 días atrasado");
+    const cierre = await registrarCierreCaja(ferreteria.id, dueno.id, antier, ayer, 0, 0, 0, 0, "Cierre de 2 días atrasado");
     expect(cierre.fecha.getTime()).not.toBe(cierre.fechaHasta.getTime());
 
     // "ayer" ya quedó cubierto por el cierre de arriba (antier→ayer).
-    await expect(registrarCierreCaja(ferreteria.id, dueno.id, ayer, ayer, 0, 0, undefined)).rejects.toThrow(EstadoInvalidoError);
+    await expect(registrarCierreCaja(ferreteria.id, dueno.id, ayer, ayer, 0, 0, 0, 0, undefined)).rejects.toThrow(EstadoInvalidoError);
   });
 });

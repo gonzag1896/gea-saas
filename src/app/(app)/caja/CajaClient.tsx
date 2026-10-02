@@ -18,17 +18,21 @@ import { Modal } from "@/components/ui/Modal";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { cn } from "@/lib/cn";
 
-type Esperado = { totalVentasContado: number; totalCobrosContado: number; totalEsperado: number };
+type Esperado = {
+  totalVentasContadoUYU: number; totalVentasContadoUSD: number;
+  totalCobrosContadoUYU: number; totalCobrosContadoUSD: number;
+  totalEsperadoUYU: number; totalEsperadoUSD: number;
+};
 type Cierre = {
   id: string;
   fecha: string;
   fechaHasta: string;
-  montoInicial: number;
-  totalVentasContado: number;
-  totalCobrosContado: number;
-  totalEsperado: number;
-  totalContado: number;
-  diferencia: number;
+  montoInicialUYU: number; montoInicialUSD: number;
+  totalVentasContadoUYU: number; totalVentasContadoUSD: number;
+  totalCobrosContadoUYU: number; totalCobrosContadoUSD: number;
+  totalEsperadoUYU: number; totalEsperadoUSD: number;
+  totalContadoUYU: number; totalContadoUSD: number;
+  diferenciaUYU: number; diferenciaUSD: number;
   observaciones: string | null;
 };
 type SortKey = "fecha" | "diferencia";
@@ -39,13 +43,25 @@ function formatoMoneda(n: number) {
   return n.toLocaleString("es-UY", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// "$ X" y, si hay algo en dólares (monto propio o el de referencia que se
+// le pasa), una segunda línea chica "US$ Y" debajo — mismo patrón que ya
+// usan las líneas de Ventas/Compras para mostrar el equivalente en dólares.
+function MontoDual({ uyu, usd, claseUyu }: { uyu: number; usd: number; claseUyu?: string }) {
+  return (
+    <div>
+      <div className={cn("font-mono tabular-nums", claseUyu)}>$ {formatoMoneda(uyu)}</div>
+      {usd !== 0 && <div className="font-mono text-xs tabular-nums text-muted-foreground">US$ {formatoMoneda(usd)}</div>}
+    </div>
+  );
+}
+
 // Mismo lenguaje visual que Compras/Ventas/Dashboard: una tarjeta con
 // ícono, valor grande y — cuando hay a dónde ir a ver el detalle — un
 // chevron que deja claro que se puede hacer click.
 function KpiCard({
-  icon: Icon, label, valor, sub, tono = "primary", href,
+  icon: Icon, label, uyu, usd, sub, tono = "primary", href,
 }: {
-  icon: typeof Wallet; label: string; valor: string; sub?: string; tono?: "primary" | "success"; href?: string;
+  icon: typeof Wallet; label: string; uyu: number; usd: number; sub?: string; tono?: "primary" | "success"; href?: string;
 }) {
   const tonos = { primary: "bg-primary/10 text-primary", success: "bg-success/10 text-success" };
   const contenido = (
@@ -55,7 +71,7 @@ function KpiCard({
       </div>
       <div className="flex-1 min-w-0">
         <div className="text-sm text-muted-foreground">{label}</div>
-        <div className="font-mono text-2xl font-semibold tabular-nums text-foreground">{valor}</div>
+        <div className="text-2xl font-semibold"><MontoDual uyu={uyu} usd={usd} /></div>
         {sub && <div className="mt-0.5 text-xs text-muted-foreground">{sub}</div>}
       </div>
       {href && <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />}
@@ -67,7 +83,7 @@ function KpiCard({
 // La diferencia es lo primero que un cajero/dueño necesita entender sin
 // ambigüedad: cuadra, falta plata, o sobra plata. Color + ícono + texto,
 // nunca solo color, para que no dependa de interpretar un signo.
-function DiferenciaPill({ diferencia }: { diferencia: number }) {
+function DiferenciaPill({ diferencia, simbolo = "$" }: { diferencia: number; simbolo?: string }) {
   if (diferencia === 0) {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap bg-green-50 text-green-700">
@@ -78,13 +94,13 @@ function DiferenciaPill({ diferencia }: { diferencia: number }) {
   if (diferencia < 0) {
     return (
       <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap bg-red-50 text-red-700">
-        <TrendingDown className="h-3.5 w-3.5" /> Faltan $ {formatoMoneda(Math.abs(diferencia))}
+        <TrendingDown className="h-3.5 w-3.5" /> Faltan {simbolo} {formatoMoneda(Math.abs(diferencia))}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium whitespace-nowrap bg-orange-50 text-orange-700">
-      <TrendingUp className="h-3.5 w-3.5" /> Sobran $ {formatoMoneda(diferencia)}
+      <TrendingUp className="h-3.5 w-3.5" /> Sobran {simbolo} {formatoMoneda(diferencia)}
     </span>
   );
 }
@@ -116,12 +132,14 @@ export function CajaClient({
   const [hasta, setHasta] = useState(hoy);
   const [esperadoRango, setEsperadoRango] = useState<Esperado>(esperado);
   const [cargandoEsperado, setCargandoEsperado] = useState(false);
-  const [montoInicial, setMontoInicial] = useState("0");
-  const [totalContado, setTotalContado] = useState("");
+  const [montoInicialUYU, setMontoInicialUYU] = useState("0");
+  const [montoInicialUSD, setMontoInicialUSD] = useState("0");
+  const [totalContadoUYU, setTotalContadoUYU] = useState("");
+  const [totalContadoUSD, setTotalContadoUSD] = useState("");
   const [observaciones, setObservaciones] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
-  const [cierreHoy, setCierreHoy] = useState<{ diferencia: number; totalContado: number } | null>(null);
+  const [cierreHoy, setCierreHoy] = useState<{ diferenciaUYU: number; diferenciaUSD: number; totalContadoUYU: number; totalContadoUSD: number } | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("fecha");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [page, setPage] = useState(1);
@@ -144,15 +162,17 @@ export function CajaClient({
     return () => { cancelado = true; };
   }, [desde, hasta, hoy, esperado]);
 
-  const totalEsperadoConFondo = (Number(montoInicial) || 0) + esperadoRango.totalEsperado;
-  const diferenciaPreview = totalContado ? Number(totalContado) - totalEsperadoConFondo : null;
+  const totalEsperadoConFondoUYU = (Number(montoInicialUYU) || 0) + esperadoRango.totalEsperadoUYU;
+  const totalEsperadoConFondoUSD = (Number(montoInicialUSD) || 0) + esperadoRango.totalEsperadoUSD;
+  const diferenciaPreviewUYU = totalContadoUYU ? Number(totalContadoUYU) - totalEsperadoConFondoUYU : null;
+  const diferenciaPreviewUSD = totalContadoUSD ? Number(totalContadoUSD) - totalEsperadoConFondoUSD : null;
 
   const cierresOrdenados = useMemo(() => {
     const copia = [...cierres];
     copia.sort((a, b) => {
       const cmp = sortKey === "fecha"
         ? new Date(a.fecha).getTime() - new Date(b.fecha).getTime()
-        : a.diferencia - b.diferencia;
+        : a.diferenciaUYU - b.diferenciaUYU;
       return sortDir === "asc" ? cmp : -cmp;
     });
     return copia;
@@ -194,8 +214,10 @@ export function CajaClient({
       body: JSON.stringify({
         desde: new Date(desde).toISOString(),
         hasta: new Date(hasta).toISOString(),
-        montoInicial: Number(montoInicial) || 0,
-        totalContado: Number(totalContado),
+        montoInicialUYU: Number(montoInicialUYU) || 0,
+        montoInicialUSD: Number(montoInicialUSD) || 0,
+        totalContadoUYU: Number(totalContadoUYU) || 0,
+        totalContadoUSD: Number(totalContadoUSD) || 0,
         observaciones: observaciones || undefined,
       }),
     });
@@ -203,7 +225,10 @@ export function CajaClient({
     const data = await res.json();
     if (!res.ok) return setError(data.error);
     if (desde === hoy && hasta === hoy) {
-      setCierreHoy({ diferencia: Number(data.cierre.diferencia), totalContado: Number(data.cierre.totalContado) });
+      setCierreHoy({
+        diferenciaUYU: Number(data.cierre.diferenciaUYU), diferenciaUSD: Number(data.cierre.diferenciaUSD),
+        totalContadoUYU: Number(data.cierre.totalContadoUYU), totalContadoUSD: Number(data.cierre.totalContadoUSD),
+      });
     }
     router.refresh();
   }
@@ -218,12 +243,13 @@ export function CajaClient({
       />
 
       <div className="flex flex-wrap gap-4">
-        <KpiCard icon={ShoppingCart} label="Ventas Contado de hoy" valor={`$ ${formatoMoneda(esperado.totalVentasContado)}`} href="/ventas" />
-        <KpiCard icon={CreditCard} label="Cobros Contado de hoy" valor={`$ ${formatoMoneda(esperado.totalCobrosContado)}`} href="/cuenta-corriente" />
+        <KpiCard icon={ShoppingCart} label="Ventas Contado de hoy" uyu={esperado.totalVentasContadoUYU} usd={esperado.totalVentasContadoUSD} href="/ventas" />
+        <KpiCard icon={CreditCard} label="Cobros Contado de hoy" uyu={esperado.totalCobrosContadoUYU} usd={esperado.totalCobrosContadoUSD} href="/cuenta-corriente" />
         <KpiCard
           icon={Wallet}
           label="Total esperado en caja"
-          valor={`$ ${formatoMoneda(esperado.totalEsperado)}`}
+          uyu={esperado.totalEsperadoUYU}
+          usd={esperado.totalEsperadoUSD}
           sub="Ventas Contado + Cobros Contado (sin fondo inicial)"
           tono="success"
         />
@@ -252,20 +278,34 @@ export function CajaClient({
               </p>
             )}
 
-            <FormField label="Fondo inicial de caja" required>
-              <Input type="number" step="0.01" min="0" value={montoInicial} onChange={(e) => setMontoInicial(e.target.value)} placeholder="$" required />
-            </FormField>
-            <p className="-mt-2 text-xs text-muted-foreground">Efectivo con el que arrancó la jornada (vuelto), antes de la primera venta.</p>
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Fondo inicial ($)" required>
+                <Input type="number" step="0.01" min="0" value={montoInicialUYU} onChange={(e) => setMontoInicialUYU(e.target.value)} placeholder="$" required />
+              </FormField>
+              <FormField label="Fondo inicial (US$)">
+                <Input type="number" step="0.01" min="0" value={montoInicialUSD} onChange={(e) => setMontoInicialUSD(e.target.value)} placeholder="US$" />
+              </FormField>
+            </div>
+            <p className="-mt-2 text-xs text-muted-foreground">Efectivo con el que arrancó la jornada (vuelto), antes de la primera venta — en cada moneda que maneje la caja.</p>
 
-            <FormField label="Monto contado físicamente" required>
-              <Input type="number" step="0.01" min="0" value={totalContado} onChange={(e) => setTotalContado(e.target.value)} placeholder="$" required />
-            </FormField>
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Contado físicamente ($)" required>
+                <Input type="number" step="0.01" min="0" value={totalContadoUYU} onChange={(e) => setTotalContadoUYU(e.target.value)} placeholder="$" required />
+              </FormField>
+              <FormField label="Contado físicamente (US$)">
+                <Input type="number" step="0.01" min="0" value={totalContadoUSD} onChange={(e) => setTotalContadoUSD(e.target.value)} placeholder="US$" />
+              </FormField>
+            </div>
 
             <p className="text-xs text-muted-foreground">
-              Esperado: <span className="font-mono font-medium text-foreground">$ {formatoMoneda(totalEsperadoConFondo)}</span>
+              Esperado: <span className="font-mono font-medium text-foreground">$ {formatoMoneda(totalEsperadoConFondoUYU)}</span>
+              {totalEsperadoConFondoUSD !== 0 && <> · <span className="font-mono font-medium text-foreground">US$ {formatoMoneda(totalEsperadoConFondoUSD)}</span></>}
               {cargandoEsperado && " (recalculando…)"}
             </p>
-            {diferenciaPreview !== null && <DiferenciaPill diferencia={diferenciaPreview} />}
+            <div className="flex flex-wrap gap-2">
+              {diferenciaPreviewUYU !== null && <DiferenciaPill diferencia={diferenciaPreviewUYU} />}
+              {diferenciaPreviewUSD !== null && diferenciaPreviewUSD !== 0 && <DiferenciaPill diferencia={diferenciaPreviewUSD} simbolo="US$" />}
+            </div>
 
             <FormField label="Observaciones">
               <Input value={observaciones} onChange={(e) => setObservaciones(e.target.value)} placeholder="Opcional" />
@@ -282,8 +322,11 @@ export function CajaClient({
         <Alert variant="info">La caja de hoy ya fue cerrada. Mirá el detalle en el historial.</Alert>
       )}
       {cierreHoy && (
-        <Alert variant={cierreHoy.diferencia === 0 ? "success" : "error"}>
-          Caja cerrada — contado $ {formatoMoneda(cierreHoy.totalContado)}, diferencia $ {formatoMoneda(cierreHoy.diferencia)}.
+        <Alert variant={cierreHoy.diferenciaUYU === 0 && cierreHoy.diferenciaUSD === 0 ? "success" : "error"}>
+          Caja cerrada — contado $ {formatoMoneda(cierreHoy.totalContadoUYU)}
+          {cierreHoy.totalContadoUSD !== 0 && ` / US$ ${formatoMoneda(cierreHoy.totalContadoUSD)}`}
+          , diferencia $ {formatoMoneda(cierreHoy.diferenciaUYU)}
+          {cierreHoy.diferenciaUSD !== 0 && ` / US$ ${formatoMoneda(cierreHoy.diferenciaUSD)}`}.
         </Alert>
       )}
 
@@ -297,8 +340,8 @@ export function CajaClient({
             <div className="border border-gray-200 rounded-lg overflow-hidden">
               <table className="w-full table-fixed">
                 <colgroup>
-                  <col style={{ width: "16%" }} />
-                  <col style={{ width: "12%" }} />
+                  <col style={{ width: "14%" }} />
+                  <col style={{ width: "14%" }} />
                   <col style={{ width: "14%" }} />
                   <col style={{ width: "14%" }} />
                   <col style={{ width: "20%" }} />
@@ -337,18 +380,19 @@ export function CajaClient({
                       <td className="px-3 py-3 text-sm text-muted-foreground">
                         {formatearRango(c.fecha, c.fechaHasta)}
                       </td>
-                      <td className="px-3 py-3 text-right font-mono tabular-nums text-sm text-muted-foreground">
-                        $ {formatoMoneda(c.montoInicial)}
+                      <td className="px-3 py-3 text-right text-sm text-muted-foreground">
+                        <MontoDual uyu={c.montoInicialUYU} usd={c.montoInicialUSD} />
                       </td>
-                      <td className="px-3 py-3 text-right font-mono tabular-nums text-sm text-foreground">
-                        $ {formatoMoneda(c.totalEsperado)}
+                      <td className="px-3 py-3 text-right text-sm text-foreground">
+                        <MontoDual uyu={c.totalEsperadoUYU} usd={c.totalEsperadoUSD} />
                       </td>
-                      <td className="px-3 py-3 text-right font-mono tabular-nums text-sm text-foreground">
-                        $ {formatoMoneda(c.totalContado)}
+                      <td className="px-3 py-3 text-right text-sm text-foreground">
+                        <MontoDual uyu={c.totalContadoUYU} usd={c.totalContadoUSD} />
                       </td>
                       <td className="px-3 py-3">
-                        <div className="flex items-center justify-center">
-                          <DiferenciaPill diferencia={c.diferencia} />
+                        <div className="flex flex-col items-center justify-center gap-1">
+                          <DiferenciaPill diferencia={c.diferenciaUYU} />
+                          {c.diferenciaUSD !== 0 && <DiferenciaPill diferencia={c.diferenciaUSD} simbolo="US$" />}
                         </div>
                       </td>
                       <td className="px-3 py-3 text-sm text-muted-foreground truncate">
@@ -402,16 +446,20 @@ function EditarCierreModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [montoInicial, setMontoInicial] = useState("0");
-  const [totalContado, setTotalContado] = useState("0");
+  const [montoInicialUYU, setMontoInicialUYU] = useState("0");
+  const [montoInicialUSD, setMontoInicialUSD] = useState("0");
+  const [totalContadoUYU, setTotalContadoUYU] = useState("0");
+  const [totalContadoUSD, setTotalContadoUSD] = useState("0");
   const [observaciones, setObservaciones] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [guardando, setGuardando] = useState(false);
 
   useEffect(() => {
     if (!cierre) return;
-    setMontoInicial(String(cierre.montoInicial));
-    setTotalContado(String(cierre.totalContado));
+    setMontoInicialUYU(String(cierre.montoInicialUYU));
+    setMontoInicialUSD(String(cierre.montoInicialUSD));
+    setTotalContadoUYU(String(cierre.totalContadoUYU));
+    setTotalContadoUSD(String(cierre.totalContadoUSD));
     setObservaciones(cierre.observaciones ?? "");
     setError(null);
   }, [cierre]);
@@ -425,8 +473,10 @@ function EditarCierreModal({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        montoInicial: Number(montoInicial) || 0,
-        totalContado: Number(totalContado) || 0,
+        montoInicialUYU: Number(montoInicialUYU) || 0,
+        montoInicialUSD: Number(montoInicialUSD) || 0,
+        totalContadoUYU: Number(totalContadoUYU) || 0,
+        totalContadoUSD: Number(totalContadoUSD) || 0,
         observaciones: observaciones || undefined,
       }),
     });
@@ -435,8 +485,10 @@ function EditarCierreModal({
     onSaved();
   }
 
-  const nuevoEsperado = cierre ? (Number(montoInicial) || 0) + cierre.totalVentasContado + cierre.totalCobrosContado : 0;
-  const nuevaDiferencia = (Number(totalContado) || 0) - nuevoEsperado;
+  const nuevoEsperadoUYU = cierre ? (Number(montoInicialUYU) || 0) + cierre.totalVentasContadoUYU + cierre.totalCobrosContadoUYU : 0;
+  const nuevoEsperadoUSD = cierre ? (Number(montoInicialUSD) || 0) + cierre.totalVentasContadoUSD + cierre.totalCobrosContadoUSD : 0;
+  const nuevaDiferenciaUYU = (Number(totalContadoUYU) || 0) - nuevoEsperadoUYU;
+  const nuevaDiferenciaUSD = (Number(totalContadoUSD) || 0) - nuevoEsperadoUSD;
 
   return (
     <Modal open={cierre !== null} onClose={onClose} title={cierre ? `Editar cierre — ${formatearRango(cierre.fecha, cierre.fechaHasta)}` : ""}>
@@ -444,16 +496,30 @@ function EditarCierreModal({
         <p className="text-xs text-muted-foreground">
           Las ventas y cobros del período no se recalculan — solo se corrige el fondo inicial, el monto contado y las observaciones.
         </p>
-        <FormField label="Fondo inicial" required>
-          <Input type="number" step="0.01" min="0" value={montoInicial} onChange={(e) => setMontoInicial(e.target.value)} required />
-        </FormField>
-        <FormField label="Monto contado físicamente" required>
-          <Input type="number" step="0.01" min="0" value={totalContado} onChange={(e) => setTotalContado(e.target.value)} required />
-        </FormField>
+        <div className="grid grid-cols-2 gap-3">
+          <FormField label="Fondo inicial ($)" required>
+            <Input type="number" step="0.01" min="0" value={montoInicialUYU} onChange={(e) => setMontoInicialUYU(e.target.value)} required />
+          </FormField>
+          <FormField label="Fondo inicial (US$)">
+            <Input type="number" step="0.01" min="0" value={montoInicialUSD} onChange={(e) => setMontoInicialUSD(e.target.value)} />
+          </FormField>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <FormField label="Contado físicamente ($)" required>
+            <Input type="number" step="0.01" min="0" value={totalContadoUYU} onChange={(e) => setTotalContadoUYU(e.target.value)} required />
+          </FormField>
+          <FormField label="Contado físicamente (US$)">
+            <Input type="number" step="0.01" min="0" value={totalContadoUSD} onChange={(e) => setTotalContadoUSD(e.target.value)} />
+          </FormField>
+        </div>
         <p className="text-xs text-muted-foreground">
-          Esperado: <span className="font-mono font-medium text-foreground">$ {formatoMoneda(nuevoEsperado)}</span>
+          Esperado: <span className="font-mono font-medium text-foreground">$ {formatoMoneda(nuevoEsperadoUYU)}</span>
+          {nuevoEsperadoUSD !== 0 && <> · <span className="font-mono font-medium text-foreground">US$ {formatoMoneda(nuevoEsperadoUSD)}</span></>}
         </p>
-        <DiferenciaPill diferencia={nuevaDiferencia} />
+        <div className="flex flex-wrap gap-2">
+          <DiferenciaPill diferencia={nuevaDiferenciaUYU} />
+          {nuevaDiferenciaUSD !== 0 && <DiferenciaPill diferencia={nuevaDiferenciaUSD} simbolo="US$" />}
+        </div>
         <FormField label="Observaciones">
           <Input value={observaciones} onChange={(e) => setObservaciones(e.target.value)} placeholder="Opcional" />
         </FormField>

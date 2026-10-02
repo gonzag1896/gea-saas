@@ -14,6 +14,7 @@ type Linea = {
   id: string;
   cantidad: number;
   costoUnitario: string;
+  moneda: "UYU" | "USD";
   subtotal: string;
   producto: { codigo: string; descripcion: string };
   devoluciones: { id: string; cantidad: number; motivo: string | null }[];
@@ -23,9 +24,12 @@ type Compra = {
   fecha: Date;
   estado: "PENDIENTE" | "CONFIRMADO" | "ANULADO";
   numeroFactura: string | null;
-  subtotal: string;
-  iva: string;
-  total: string;
+  subtotalUYU: string;
+  subtotalUSD: string;
+  ivaUYU: string;
+  ivaUSD: string;
+  totalUYU: string;
+  totalUSD: string;
   motivoAnulacion: string | null;
   proveedor: { nombre: string };
   detalle: Linea[];
@@ -121,8 +125,8 @@ export function CompraDetalleClient({
               <Table.Row key={l.id}>
                 <Table.Cell>{l.producto.codigo} — {l.producto.descripcion}</Table.Cell>
                 <Table.Cell>{l.cantidad}</Table.Cell>
-                <Table.Cell className="font-mono tabular-nums">{l.costoUnitario}</Table.Cell>
-                <Table.Cell className="font-mono tabular-nums">{l.subtotal}</Table.Cell>
+                <Table.Cell className="font-mono tabular-nums">{l.moneda === "USD" ? "US$" : "$"} {l.costoUnitario}</Table.Cell>
+                <Table.Cell className="font-mono tabular-nums">{l.moneda === "USD" ? "US$" : "$"} {l.subtotal}</Table.Cell>
                 <Table.Cell>{devuelto}</Table.Cell>
                 {puedeDevolver && (
                   <Table.Cell>
@@ -138,7 +142,12 @@ export function CompraDetalleClient({
       </Table>
 
       <p className="text-sm text-muted-foreground font-mono tabular-nums">
-        Subtotal: {compra.subtotal} · IVA: {compra.iva} · <span className="font-semibold text-foreground">Total: {compra.total}</span>
+        Subtotal: $ {compra.subtotalUYU}{Number(compra.subtotalUSD) !== 0 && <> · US$ {compra.subtotalUSD}</>}
+        {" · "}IVA: $ {compra.ivaUYU}{Number(compra.ivaUSD) !== 0 && <> · US$ {compra.ivaUSD}</>}
+        {" · "}
+        <span className="font-semibold text-foreground">
+          Total: $ {compra.totalUYU}{Number(compra.totalUSD) !== 0 && <> · US$ {compra.totalUSD}</>}
+        </span>
       </p>
 
       <PromptDialog

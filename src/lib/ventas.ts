@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import type { Prisma, MedioPago } from "@prisma/client";
+import type { Prisma, MedioPago, Moneda } from "@prisma/client";
 import type { crearVentaSchema } from "@/lib/schemas-ventas";
 import { aplicarMovimientoStock } from "@/lib/stock";
 import { auditar } from "@/lib/auditoria";
@@ -9,6 +9,9 @@ import type { z } from "zod";
 // Asienta el efecto de una venta en la cuenta corriente del cliente según
 // su medio de pago — un único lugar para no repetir esto entre
 // crearVentaConfirmada (alta) y confirmarVenta (flujo Pendiente→Confirmado).
+// Pesos y dólares nunca se mezclan: una venta mixta genera HASTA DOS pares
+// de asientos, uno por cada moneda con monto > 0 — cada uno etiquetado con
+// su propia `moneda`, nunca convertido al otro lado.
 // Crédito: un Debe por el total (la deuda real). Contado/Débito: un Debe
 // y un Haber por el mismo monto, los dos con origenTipo VENTA_CONTADO —
 // nunca COBRO, porque calcularEsperadoCaja ya cuenta esta venta una vez
@@ -18,24 +21,28 @@ import type { z } from "zod";
 // efectivo que pase por la cuenta corriente).
 async function asentarVentaEnCuentaCorriente(
   tx: Prisma.TransactionClient,
-  params: { ferreteriaId: string; clienteId: string; ventaId: string; fecha: Date; total: Prisma.Decimal | number; medioPago: MedioPago; usuarioId: string },
+  params: { ferreteriaId: string; clienteId: string; ventaId: string; fecha: Date; totalUYU: Prisma.Decimal | number; totalUSD: Prisma.Decimal | number; medioPago: MedioPago; usuarioId: string },
 ) {
-  const { ferreteriaId, clienteId, ventaId, fecha, total, medioPago, usuarioId } = params;
+  const { ferreteriaId, clienteId, ventaId, fecha, totalUYU, totalUSD, medioPago, usuarioId } = params;
 
-  if (medioPago === "CREDITO") {
-    await tx.cuentaCliente.create({
-      data: { ferreteriaId, clienteId, fecha, debe: total, haber: 0, origenTipo: "VENTA_CREDITO", origenId: ventaId, registradoPorUsuarioId: usuarioId },
-    });
-  } else if (medioPago === "CONTADO" || medioPago === "DEBITO") {
-    await tx.cuentaCliente.create({
-      data: { ferreteriaId, clienteId, fecha, debe: total, haber: 0, origenTipo: "VENTA_CONTADO", origenId: ventaId, medioPago, registradoPorUsuarioId: usuarioId },
-    });
-    await tx.cuentaCliente.create({
-      data: {
-        ferreteriaId, clienteId, fecha, debe: 0, haber: total, origenTipo: "VENTA_CONTADO", origenId: ventaId,
-        referencia: "Cobrado al momento de la venta", medioPago, registradoPorUsuarioId: usuarioId,
-      },
-    });
+  for (const [moneda, total] of [["UYU", totalUYU], ["USD", totalUSD]] as [Moneda, Prisma.Decimal | number][]) {
+    if (Number(total) <= 0) continue;
+
+    if (medioPago === "CREDITO") {
+      await tx.cuentaCliente.create({
+        data: { ferreteriaId, clienteId, fecha, debe: total, haber: 0, moneda, origenTipo: "VENTA_CREDITO", origenId: ventaId, registradoPorUsuarioId: usuarioId },
+      });
+    } else if (medioPago === "CONTADO" || medioPago === "DEBITO") {
+      await tx.cuentaCliente.create({
+        data: { ferreteriaId, clienteId, fecha, debe: total, haber: 0, moneda, origenTipo: "VENTA_CONTADO", origenId: ventaId, medioPago, registradoPorUsuarioId: usuarioId },
+      });
+      await tx.cuentaCliente.create({
+        data: {
+          ferreteriaId, clienteId, fecha, debe: 0, haber: total, moneda, origenTipo: "VENTA_CONTADO", origenId: ventaId,
+          referencia: "Cobrado al momento de la venta", medioPago, registradoPorUsuarioId: usuarioId,
+        },
+      });
+    }
   }
 }
 
@@ -50,12 +57,16 @@ export async function crearVentaConfirmada(
   usuarioId: string,
   datos: z.infer<typeof crearVentaSchema>,
 ) {
+  // Cada línea suma solo al acumulador de su propia moneda — nunca se
+  // mezclan (ver comentario en el modelo Venta de schema.prisma).
   const lineas = datos.detalle.map((l) => {
     const total = l.precio * l.cantidad * (1 - l.descuento / 100);
     return { ...l, total, iva: l.tipoIva === "TOTAL" ? total * 0.22 : 0 };
   });
-  const subtotal = lineas.reduce((acc, l) => acc + l.total, 0);
-  const iva = lineas.reduce((acc, l) => acc + l.iva, 0);
+  const subtotalUYU = lineas.filter((l) => l.moneda === "UYU").reduce((acc, l) => acc + l.total, 0);
+  const subtotalUSD = lineas.filter((l) => l.moneda === "USD").reduce((acc, l) => acc + l.total, 0);
+  const ivaUYU = lineas.filter((l) => l.moneda === "UYU").reduce((acc, l) => acc + l.iva, 0);
+  const ivaUSD = lineas.filter((l) => l.moneda === "USD").reduce((acc, l) => acc + l.iva, 0);
   const fecha = new Date(datos.fecha);
 
   const venta = await prisma.$transaction(async (tx) => {
@@ -68,14 +79,19 @@ export async function crearVentaConfirmada(
         entrega: datos.entrega,
         registradoPorUsuarioId: usuarioId,
         estado: "CONFIRMADO",
-        subtotal,
-        iva,
-        total: subtotal + iva,
+        subtotalUYU,
+        subtotalUSD,
+        ivaUYU,
+        ivaUSD,
+        totalUYU: subtotalUYU + ivaUYU,
+        totalUSD: subtotalUSD + ivaUSD,
         detalle: {
           create: lineas.map((l) => ({
             productoId: l.productoId,
             cantidad: l.cantidad,
             precio: l.precio,
+            moneda: l.moneda,
+            cotizacion: l.moneda === "USD" ? l.cotizacion : undefined,
             descuento: l.descuento,
             tipoIva: l.tipoIva,
             total: l.total,
@@ -101,7 +117,8 @@ export async function crearVentaConfirmada(
     }
 
     await asentarVentaEnCuentaCorriente(tx, {
-      ferreteriaId, clienteId: venta.clienteId, ventaId: venta.id, fecha: venta.fecha, total: venta.total, medioPago: venta.medioPago, usuarioId,
+      ferreteriaId, clienteId: venta.clienteId, ventaId: venta.id, fecha: venta.fecha,
+      totalUYU: venta.totalUYU, totalUSD: venta.totalUSD, medioPago: venta.medioPago, usuarioId,
     });
 
     return venta;
@@ -149,7 +166,8 @@ export async function confirmarVenta(ferreteriaId: string, ventaId: string, usua
     }
 
     await asentarVentaEnCuentaCorriente(tx, {
-      ferreteriaId, clienteId: venta.clienteId, ventaId: venta.id, fecha: venta.fecha, total: venta.total, medioPago: venta.medioPago, usuarioId,
+      ferreteriaId, clienteId: venta.clienteId, ventaId: venta.id, fecha: venta.fecha,
+      totalUYU: venta.totalUYU, totalUSD: venta.totalUSD, medioPago: venta.medioPago, usuarioId,
     });
   });
 
@@ -191,7 +209,7 @@ export async function anularVenta(ferreteriaId: string, ventaId: string, usuario
       include: { detalle: true },
     });
 
-    let montoARevertir = 0;
+    const montoARevertir: Record<"UYU" | "USD", number> = { UYU: 0, USD: 0 };
     for (const linea of venta.detalle) {
       const cantidadNeta = linea.cantidad - linea.cantidadDevuelta;
       if (cantidadNeta > 0) {
@@ -207,22 +225,26 @@ export async function anularVenta(ferreteriaId: string, ventaId: string, usuario
           registradoPorUsuarioId: usuarioId,
         });
       }
-      montoARevertir += Number(linea.totalVigente);
+      montoARevertir[linea.moneda] += Number(linea.totalVigente);
     }
 
-    if (venta.medioPago === "CREDITO" && montoARevertir > 0) {
-      await tx.cuentaCliente.create({
-        data: {
-          ferreteriaId,
-          clienteId: venta.clienteId,
-          fecha: new Date(),
-          debe: 0,
-          haber: montoARevertir,
-          origenTipo: "ANULACION_VENTA_CREDITO",
-          origenId: ventaId,
-          registradoPorUsuarioId: usuarioId,
-        },
-      });
+    if (venta.medioPago === "CREDITO") {
+      for (const moneda of ["UYU", "USD"] as const) {
+        if (montoARevertir[moneda] <= 0) continue;
+        await tx.cuentaCliente.create({
+          data: {
+            ferreteriaId,
+            clienteId: venta.clienteId,
+            fecha: new Date(),
+            debe: 0,
+            haber: montoARevertir[moneda],
+            moneda,
+            origenTipo: "ANULACION_VENTA_CREDITO",
+            origenId: ventaId,
+            registradoPorUsuarioId: usuarioId,
+          },
+        });
+      }
     }
   });
 
@@ -283,6 +305,7 @@ export async function registrarDevolucionVenta(
           fecha: new Date(),
           debe: 0,
           haber: montoDevuelto,
+          moneda: linea.moneda,
           origenTipo: "DEVOLUCION_VENTA",
           origenId: ventaDetalleId,
           registradoPorUsuarioId: usuarioId,

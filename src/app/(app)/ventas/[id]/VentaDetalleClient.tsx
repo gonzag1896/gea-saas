@@ -16,6 +16,7 @@ type Linea = {
   cantidad: number;
   cantidadDevuelta: number;
   precio: string;
+  moneda: "UYU" | "USD";
   total: string;
   totalVigente: string;
   producto: { codigo: string; descripcion: string };
@@ -25,9 +26,12 @@ type Venta = {
   fecha: Date;
   estado: "PENDIENTE" | "CONFIRMADO" | "ANULADO";
   medioPago: string;
-  subtotal: string;
-  iva: string;
-  total: string;
+  subtotalUYU: string;
+  subtotalUSD: string;
+  ivaUYU: string;
+  ivaUSD: string;
+  totalUYU: string;
+  totalUSD: string;
   motivoAnulacion: string | null;
   cliente: { nombre: string };
   detalle: Linea[];
@@ -125,9 +129,9 @@ export function VentaDetalleClient({
             <Table.Row key={l.id}>
               <Table.Cell>{l.producto.codigo} — {l.producto.descripcion}</Table.Cell>
               <Table.Cell>{l.cantidad}</Table.Cell>
-              <Table.Cell className="font-mono tabular-nums">{l.precio}</Table.Cell>
-              <Table.Cell className="font-mono tabular-nums">{l.total}</Table.Cell>
-              <Table.Cell className="font-mono tabular-nums">{l.totalVigente}</Table.Cell>
+              <Table.Cell className="font-mono tabular-nums">{l.moneda === "USD" ? "US$" : "$"} {l.precio}</Table.Cell>
+              <Table.Cell className="font-mono tabular-nums">{l.moneda === "USD" ? "US$" : "$"} {l.total}</Table.Cell>
+              <Table.Cell className="font-mono tabular-nums">{l.moneda === "USD" ? "US$" : "$"} {l.totalVigente}</Table.Cell>
               <Table.Cell>{l.cantidadDevuelta}</Table.Cell>
               {puedeDevolver && (
                 <Table.Cell>
@@ -142,7 +146,12 @@ export function VentaDetalleClient({
       </Table>
 
       <p className="text-sm text-muted-foreground font-mono tabular-nums">
-        Subtotal: {venta.subtotal} · IVA: {venta.iva} · <span className="font-semibold text-foreground">Total: {venta.total}</span>
+        Subtotal: $ {venta.subtotalUYU}{Number(venta.subtotalUSD) !== 0 && <> · US$ {venta.subtotalUSD}</>}
+        {" · "}IVA: $ {venta.ivaUYU}{Number(venta.ivaUSD) !== 0 && <> · US$ {venta.ivaUSD}</>}
+        {" · "}
+        <span className="font-semibold text-foreground">
+          Total: $ {venta.totalUYU}{Number(venta.totalUSD) !== 0 && <> · US$ {venta.totalUSD}</>}
+        </span>
       </p>
 
       <PromptDialog

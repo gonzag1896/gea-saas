@@ -21,17 +21,11 @@ function formatoMoneda(n: number) {
   return n.toLocaleString("es-UY", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-// Subtotal en la moneda propia de la línea (la del producto) — lo que se
-// ve al cargar. El total de la compra, en cambio, siempre se expresa en
-// pesos (ver subtotalLineaPesos), porque es lo que se guarda y lo que
-// entra a cuenta corriente si la compra es a crédito.
+// Subtotal en la moneda propia de la línea — ya no se convierte a pesos acá:
+// cada línea viaja en su moneda y es el servidor quien suma por separado
+// (ver Compra.subtotalUYU/subtotalUSD).
 function subtotalLinea(l: Linea) {
   return Number(l.cantidad) * Number(l.costoUnitario) * (1 - Number(l.descuento || 0) / 100);
-}
-
-function subtotalLineaPesos(l: Linea, cotizacion: number | null) {
-  const monto = subtotalLinea(l);
-  return l.moneda === "USD" ? monto * (cotizacion ?? 0) : monto;
 }
 
 export function CompraFormClient({
@@ -122,12 +116,15 @@ export function CompraFormClient({
         fecha: new Date(fecha).toISOString(),
         numeroFactura: numeroFactura || undefined,
         medioPago,
-        // El backend siempre guarda en pesos — una línea en dólares se
-        // convierte acá con la cotización configurada antes de mandarla.
+        // Cada línea viaja en su propia moneda, sin convertir — el
+        // servidor es quien calcula el total en pesos y el total en
+        // dólares, cada uno sumando solo sus propias líneas.
         detalle: lineas.map((l) => ({
           productoId: l.productoId,
           cantidad: Number(l.cantidad),
-          costoUnitario: l.moneda === "USD" ? Number(l.costoUnitario) * (cotizacion ?? 0) : Number(l.costoUnitario),
+          costoUnitario: Number(l.costoUnitario),
+          moneda: l.moneda,
+          cotizacion: l.moneda === "USD" ? cotizacion ?? undefined : undefined,
           descuento: Number(l.descuento || 0),
           tipoIva: l.tipoIva,
         })),
@@ -140,7 +137,8 @@ export function CompraFormClient({
     router.refresh();
   }
 
-  const subtotal = lineas.reduce((acc, l) => acc + subtotalLineaPesos(l, cotizacion), 0);
+  const subtotalUYU = lineas.filter((l) => l.moneda === "UYU").reduce((acc, l) => acc + subtotalLinea(l), 0);
+  const subtotalUSD = lineas.filter((l) => l.moneda === "USD").reduce((acc, l) => acc + subtotalLinea(l), 0);
 
   if (proveedores.length === 0 || !hayProductos) {
     return (
@@ -283,8 +281,7 @@ export function CompraFormClient({
                         </Table.Cell>
                         <Table.Cell>{l.tipoIva === "TOTAL" ? "22%" : "Exento"}</Table.Cell>
                         <Table.Cell className="font-mono tabular-nums">
-                          $ {formatoMoneda(subtotalLineaPesos(l, cotizacion))}
-                          {l.moneda === "USD" && <div className="text-xs font-normal text-muted-foreground">US$ {formatoMoneda(subtotalLinea(l))}</div>}
+                          {l.moneda === "USD" ? "US$" : "$"} {formatoMoneda(subtotalLinea(l))}
                         </Table.Cell>
                         <Table.Cell>
                           <Button type="button" variant="icon" className="h-8 w-8" aria-label="Quitar línea" onClick={() => quitarLinea(i)}>
@@ -296,7 +293,10 @@ export function CompraFormClient({
                   </tbody>
                 </Table>
                 <p className="mt-3 text-right text-sm text-muted-foreground">
-                  Subtotal sin IVA: <span className="font-mono font-semibold tabular-nums text-foreground">$ {formatoMoneda(subtotal)}</span>
+                  Subtotal sin IVA:{" "}
+                  <span className="font-mono font-semibold tabular-nums text-foreground">
+                    $ {formatoMoneda(subtotalUYU)}{subtotalUSD !== 0 && <> · US$ {formatoMoneda(subtotalUSD)}</>}
+                  </span>
                 </p>
               </>
             )}

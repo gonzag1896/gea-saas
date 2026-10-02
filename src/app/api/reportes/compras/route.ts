@@ -8,14 +8,16 @@ type FilaCompra = {
   fecha: Date;
   proveedor: string;
   estado: string;
-  total: number;
+  totalUYU: number;
+  totalUSD: number;
 };
 
 const COLUMNAS: ColumnaReporte<FilaCompra>[] = [
   { header: "Fecha", value: (c) => formatearFecha(c.fecha), anchoExcel: 14, anchoPdf: 90 },
   { header: "Proveedor", value: (c) => c.proveedor, anchoExcel: 32, anchoPdf: 220 },
   { header: "Estado", value: (c) => c.estado, anchoExcel: 14, anchoPdf: 90 },
-  { header: "Total", value: (c) => c.total, anchoExcel: 14, anchoPdf: 90, alineacion: "right" },
+  { header: "Total $", value: (c) => c.totalUYU, anchoExcel: 14, anchoPdf: 90, alineacion: "right" },
+  { header: "Total US$", value: (c) => c.totalUSD, anchoExcel: 14, anchoPdf: 90, alineacion: "right" },
 ];
 
 export async function GET(req: Request) {
@@ -24,7 +26,7 @@ export async function GET(req: Request) {
 
   const comprasRaw = await prisma.compra.findMany({
     where: { ferreteriaId: resultado.contexto.ferreteriaId },
-    select: { fecha: true, estado: true, total: true, proveedor: { select: { nombre: true } } },
+    select: { fecha: true, estado: true, totalUYU: true, totalUSD: true, proveedor: { select: { nombre: true } } },
     orderBy: { fecha: "desc" },
   });
 
@@ -32,7 +34,8 @@ export async function GET(req: Request) {
     fecha: c.fecha,
     proveedor: c.proveedor.nombre,
     estado: c.estado,
-    total: Number(c.total),
+    totalUYU: Number(c.totalUYU),
+    totalUSD: Number(c.totalUSD),
   }));
 
   const { searchParams } = new URL(req.url);

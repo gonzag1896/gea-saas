@@ -16,6 +16,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const proveedor = await prisma.proveedor.findUnique({ where: { id_ferreteriaId: { id: params.id, ferreteriaId } } });
   if (!proveedor) return NextResponse.json({ error: "Proveedor no encontrado." }, { status: 404 });
 
-  await registrarPagoProveedor(ferreteriaId, params.id, parsed.data.monto, usuarioId, parsed.data.referencia, parsed.data.medioPago);
+  const { monto, referencia, medioPago, moneda, monedaRecibida, cotizacion } = parsed.data;
+  const cruce = monedaRecibida && cotizacion ? { monedaRecibida, cotizacion } : undefined;
+  await registrarPagoProveedor(ferreteriaId, params.id, monto, usuarioId, referencia, medioPago, moneda, cruce);
   return NextResponse.json({ ok: true }, { status: 201 });
 }

@@ -73,8 +73,8 @@ describe("integración end-to-end — compra -> venta -> cobro -> dashboard, 2 f
     const compra = await prisma.compra.create({
       data: {
         ferreteriaId: t.ferreteria.id, proveedorId: t.proveedorId, fecha: new Date(),
-        subtotal: totalCompra, iva: 0, total: totalCompra,
-        detalle: { create: [{ productoId: t.productoId, cantidad: params.cantidadCompra, costoUnitario: params.costoUnitario, subtotal: totalCompra }] },
+        subtotalUYU: totalCompra, ivaUYU: 0, totalUYU: totalCompra,
+        detalle: { create: [{ productoId: t.productoId, cantidad: params.cantidadCompra, costoUnitario: params.costoUnitario, moneda: "UYU", subtotal: totalCompra }] },
       },
     });
     await confirmarCompra(t.ferreteria.id, compra.id, t.dueno.id);
@@ -83,8 +83,8 @@ describe("integración end-to-end — compra -> venta -> cobro -> dashboard, 2 f
     const venta = await prisma.venta.create({
       data: {
         ferreteriaId: t.ferreteria.id, clienteId: t.clienteId, fecha: new Date(), medioPago: "CREDITO",
-        subtotal: totalVenta, iva: 0, total: totalVenta,
-        detalle: { create: [{ productoId: t.productoId, cantidad: params.cantidadVenta, precio: params.precioVenta, total: totalVenta, totalVigente: totalVenta }] },
+        subtotalUYU: totalVenta, ivaUYU: 0, totalUYU: totalVenta,
+        detalle: { create: [{ productoId: t.productoId, cantidad: params.cantidadVenta, precio: params.precioVenta, moneda: "UYU", total: totalVenta, totalVigente: totalVenta }] },
       },
     });
     await confirmarVenta(t.ferreteria.id, venta.id, t.dueno.id);
@@ -113,8 +113,8 @@ describe("integración end-to-end — compra -> venta -> cobro -> dashboard, 2 f
       calcularSaldoCliente(a.ferreteria.id, a.clienteId),
       calcularSaldoCliente(b.ferreteria.id, b.clienteId),
     ]);
-    expect(saldoA).toBe(resA.totalVenta - 500); // 1200 - 500 = 700
-    expect(saldoB).toBe(resB.totalVenta - 1200); // 1200 - 1200 = 0
+    expect(saldoA.saldoUYU).toBe(resA.totalVenta - 500); // 1200 - 500 = 700
+    expect(saldoB.saldoUYU).toBe(resB.totalVenta - 1200); // 1200 - 1200 = 0
 
     // --- Dashboard: totales del mes, aislados por ferreteriaId ---
     const [ventasMesA, comprasMesA, ventasMesB, comprasMesB] = await Promise.all([
@@ -123,10 +123,10 @@ describe("integración end-to-end — compra -> venta -> cobro -> dashboard, 2 f
       totalVentasDelMes(b.ferreteria.id),
       totalComprasDelMes(b.ferreteria.id),
     ]);
-    expect(ventasMesA).toBe(resA.totalVenta); // 1200
-    expect(comprasMesA).toBe(resA.totalCompra); // 1000
-    expect(ventasMesB).toBe(resB.totalVenta); // 1200 (igual a A a propósito: mismo número, ferretería distinta)
-    expect(comprasMesB).toBe(resB.totalCompra); // 500
+    expect(ventasMesA.uyu).toBe(resA.totalVenta); // 1200
+    expect(comprasMesA.uyu).toBe(resA.totalCompra); // 1000
+    expect(ventasMesB.uyu).toBe(resB.totalVenta); // 1200 (igual a A a propósito: mismo número, ferretería distinta)
+    expect(comprasMesB.uyu).toBe(resB.totalCompra); // 500
 
     const inicioMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     const finMes = new Date();
@@ -134,8 +134,8 @@ describe("integración end-to-end — compra -> venta -> cobro -> dashboard, 2 f
       comprasPorProveedor(a.ferreteria.id, inicioMes, finMes),
       comprasPorProveedor(b.ferreteria.id, inicioMes, finMes),
     ]);
-    expect(porProveedorA).toEqual([{ proveedor: "Proveedor A", total: 1000 }]);
-    expect(porProveedorB).toEqual([{ proveedor: "Proveedor B", total: 500 }]);
+    expect(porProveedorA).toEqual([{ proveedor: "Proveedor A", totalUYU: 1000, totalUSD: 0 }]);
+    expect(porProveedorB).toEqual([{ proveedor: "Proveedor B", totalUYU: 500, totalUSD: 0 }]);
   });
 
   it("anular la venta de una ferretería en medio del flujo no toca stock ni saldo de la otra", async () => {
@@ -152,7 +152,7 @@ describe("integración end-to-end — compra -> venta -> cobro -> dashboard, 2 f
       calcularSaldoCliente(b.ferreteria.id, b.clienteId),
     ]);
     expect(stockBDespues).toBe(stockBAntes);
-    expect(saldoBDespues).toBe(saldoBAntes);
+    expect(saldoBDespues).toEqual(saldoBAntes);
 
     // Y en A sí se revirtió: repuso las 12 unidades vendidas.
     const productoA = await prisma.producto.findUniqueOrThrow({ where: { id: a.productoId } });

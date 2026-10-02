@@ -3,7 +3,14 @@ import { z } from "zod";
 const lineaCompraSchema = z.object({
   productoId: z.string().min(1),
   cantidad: z.number().int().positive("La cantidad debe ser mayor a 0."),
+  // costoUnitario va en `moneda`, sin convertir — el cliente ya no manda
+  // nada pre-convertido a pesos, eso lo hacía perder la moneda original.
   costoUnitario: z.number().nonnegative(),
+  moneda: z.enum(["UYU", "USD"]).default("UYU"),
+  // Cotización vigente al momento de cargar la línea — solo para mostrarla
+  // después, nunca se usa para calcular. Irrelevante (y se ignora) si la
+  // línea es en pesos.
+  cotizacion: z.number().positive().optional(),
   // Puntos porcentuales (0-100), no un monto en $.
   descuento: z.number().min(0, "El descuento no puede ser negativo.").max(100, "El descuento no puede superar el 100%.").default(0),
   tipoIva: z.enum(["EXENTO", "TOTAL"]).default("EXENTO"),

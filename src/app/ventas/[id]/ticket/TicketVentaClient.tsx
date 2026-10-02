@@ -8,6 +8,7 @@ type Linea = {
   id: string;
   cantidad: number;
   precio: string;
+  moneda: "UYU" | "USD";
   tipoIva: "EXENTO" | "TOTAL";
   totalVigente: string;
   producto: { codigo: string; descripcion: string };
@@ -17,9 +18,12 @@ type Venta = {
   fecha: Date;
   estado: "PENDIENTE" | "CONFIRMADO" | "ANULADO";
   medioPago: string;
-  subtotal: string;
-  iva: string;
-  total: string;
+  subtotalUYU: string;
+  subtotalUSD: string;
+  ivaUYU: string;
+  ivaUSD: string;
+  totalUYU: string;
+  totalUSD: string;
   motivoAnulacion: string | null;
   cliente: { nombre: string; telefono: string | null };
   detalle: Linea[];
@@ -120,9 +124,9 @@ export function TicketVentaClient({ venta, ferreteria }: { venta: Venta; ferrete
               <tr key={l.id} className="border-b border-gray-100">
                 <td className="py-1 pr-1">{l.producto.descripcion}</td>
                 <td className="py-1 text-right font-mono tabular-nums">{l.cantidad}</td>
-                <td className="py-1 text-right font-mono tabular-nums">{formatoMoneda(l.precio)}</td>
+                <td className="py-1 text-right font-mono tabular-nums">{l.moneda === "USD" ? "US$" : "$"} {formatoMoneda(l.precio)}</td>
                 <td className="py-1 text-right text-gray-500">{l.tipoIva === "TOTAL" ? "22%" : "Exento"}</td>
-                <td className="py-1 text-right font-mono tabular-nums">{formatoMoneda(l.totalVigente)}</td>
+                <td className="py-1 text-right font-mono tabular-nums">{l.moneda === "USD" ? "US$" : "$"} {formatoMoneda(l.totalVigente)}</td>
               </tr>
             ))}
           </tbody>
@@ -133,17 +137,23 @@ export function TicketVentaClient({ venta, ferreteria }: { venta: Venta; ferrete
         <div className="flex flex-col gap-1 text-xs">
           <div className="flex justify-between">
             <span className="text-gray-500">Subtotal</span>
-            <span className="font-mono tabular-nums">$ {formatoMoneda(venta.subtotal)}</span>
+            <span className="font-mono tabular-nums">
+              $ {formatoMoneda(venta.subtotalUYU)}{Number(venta.subtotalUSD) > 0 && <> · US$ {formatoMoneda(venta.subtotalUSD)}</>}
+            </span>
           </div>
-          {Number(venta.iva) > 0 && (
+          {(Number(venta.ivaUYU) > 0 || Number(venta.ivaUSD) > 0) && (
             <div className="flex justify-between">
               <span className="text-gray-500">IVA</span>
-              <span className="font-mono tabular-nums">$ {formatoMoneda(venta.iva)}</span>
+              <span className="font-mono tabular-nums">
+                $ {formatoMoneda(venta.ivaUYU)}{Number(venta.ivaUSD) > 0 && <> · US$ {formatoMoneda(venta.ivaUSD)}</>}
+              </span>
             </div>
           )}
           <div className="flex justify-between text-sm font-bold">
             <span>Total</span>
-            <span className="font-mono tabular-nums">$ {formatoMoneda(venta.total)}</span>
+            <span className="font-mono tabular-nums">
+              $ {formatoMoneda(venta.totalUYU)}{Number(venta.totalUSD) > 0 && <> · US$ {formatoMoneda(venta.totalUSD)}</>}
+            </span>
           </div>
         </div>
 

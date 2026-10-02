@@ -490,9 +490,16 @@ model Compra {
   medioPago     MedioPago       @default(CONTADO)
   observaciones String?
 
-  subtotal Decimal @default(0) @db.Decimal(12, 2)
-  iva      Decimal @default(0) @db.Decimal(12, 2)
-  total    Decimal @default(0) @db.Decimal(12, 2)
+  // Pesos y dólares se llevan por separado, nunca convertidos entre sí —
+  // una compra puede tener líneas en las dos monedas (ver CompraDetalle.
+  // moneda) y cada una suma solo a su propio total. "total" a secas dejó
+  // de existir a propósito: forzaría a convertir de nuevo.
+  subtotalUYU Decimal @default(0) @db.Decimal(12, 2)
+  subtotalUSD Decimal @default(0) @db.Decimal(12, 2)
+  ivaUYU      Decimal @default(0) @db.Decimal(12, 2)
+  ivaUSD      Decimal @default(0) @db.Decimal(12, 2)
+  totalUYU    Decimal @default(0) @db.Decimal(12, 2)
+  totalUSD    Decimal @default(0) @db.Decimal(12, 2)
 
   registradoPorUsuarioId String?
   anuladoPorUsuarioId    String?
@@ -522,7 +529,16 @@ model CompraDetalle {
 
   // CHECK (cantidad > 0) — migración manual.
   cantidad      Int
+  // costoUnitario está en `moneda`, sin convertir — antes se convertía a
+  // pesos con Ferreteria.cotizacionDolar antes de guardar; ahora se guarda
+  // tal cual se cargó, y es Compra.subtotalUYU/subtotalUSD quien agrupa
+  // por moneda al sumar.
   costoUnitario Decimal @db.Decimal(12, 2)
+  moneda        Moneda  @default(UYU)
+  // Cotización del dólar al momento de esta línea — solo para mostrarla
+  // después ("comprado a US$ 10, cotización $42,50 ese día"), nunca se usa
+  // para calcular nada. NULL si la línea es en pesos.
+  cotizacion    Decimal? @db.Decimal(10, 4)
   // Puntos porcentuales (0-100), no un monto en $ — igual criterio que
   // VentaDetalle.descuento.
   descuento     Decimal @default(0) @db.Decimal(5, 2)
@@ -576,10 +592,18 @@ model Venta {
   estado    EstadoOperacion @default(PENDIENTE)
   medioPago MedioPago       @default(CONTADO)
 
-  subtotal Decimal @default(0) @db.Decimal(12, 2)
-  iva      Decimal @default(0) @db.Decimal(12, 2)
-  entrega  Decimal @default(0) @db.Decimal(12, 2)
-  total    Decimal @default(0) @db.Decimal(12, 2)
+  // Pesos y dólares se llevan por separado, nunca convertidos entre sí —
+  // una venta puede tener líneas en las dos monedas (ver VentaDetalle.
+  // moneda) y cada una suma solo a su propio total. "entrega" (seña) queda
+  // solo en pesos a propósito: una seña en dólares es un caso raro, se
+  // agrega el día que haga falta.
+  subtotalUYU Decimal @default(0) @db.Decimal(12, 2)
+  subtotalUSD Decimal @default(0) @db.Decimal(12, 2)
+  ivaUYU      Decimal @default(0) @db.Decimal(12, 2)
+  ivaUSD      Decimal @default(0) @db.Decimal(12, 2)
+  entrega     Decimal @default(0) @db.Decimal(12, 2)
+  totalUYU    Decimal @default(0) @db.Decimal(12, 2)
+  totalUSD    Decimal @default(0) @db.Decimal(12, 2)
 
   registradoPorUsuarioId String?
   anuladoPorUsuarioId    String?
@@ -607,7 +631,16 @@ model VentaDetalle {
   ventaId      String
   productoId   String
 
+  // precio está en `moneda`, sin convertir — antes se convertía a pesos con
+  // Ferreteria.cotizacionDolar antes de guardar; ahora se guarda tal cual
+  // se cargó, y es Venta.subtotalUYU/subtotalUSD quien agrupa por moneda
+  // al sumar.
   precio           Decimal @db.Decimal(12, 2)
+  moneda           Moneda  @default(UYU)
+  // Cotización del dólar al momento de esta línea — solo para mostrarla
+  // después ("vendido a US$ 10, cotización $42,50 ese día"), nunca se usa
+  // para calcular nada. NULL si la línea es en pesos.
+  cotizacion       Decimal? @db.Decimal(10, 4)
   // Puntos porcentuales (0-100), no un monto en $ — se aplica sobre
   // precio*cantidad al calcular `total`.
   descuento        Decimal @default(0) @db.Decimal(5, 2)
@@ -711,6 +744,12 @@ enum OrigenCuentaCliente {
   // lo que te debe. El saldo neto no se mueve: ya está cobrada.
   VENTA_CONTADO
   COBRO
+  // Contraasiento de un COBRO cargado por error: un Debe por el mismo
+  // monto y moneda, con origenId = id del cobro anulado. El cobro original
+  // no se toca (el libro es append-only); que está anulado se deduce de
+  // que existe esta fila. UNIQUE parcial sobre origenId (migración manual)
+  // impide anular dos veces el mismo cobro.
+  ANULACION_COBRO
   DEVOLUCION_VENTA
   ANULACION_VENTA_CREDITO
 }
@@ -725,6 +764,10 @@ model CuentaCliente {
   // migración manual: una fila es débito o crédito, nunca ambos ni negativa.
   debe  Decimal  @default(0) @db.Decimal(12, 2)
   haber Decimal  @default(0) @db.Decimal(12, 2)
+  // Pesos y dólares nunca se mezclan ni se convierten entre sí — el saldo
+  // del cliente se calcula por separado en cada moneda (ver
+  // calcularSaldoCliente). Un movimiento es siempre de una sola moneda.
+  moneda Moneda @default(UYU)
 
   origenTipo OrigenCuentaCliente
   origenId   String?
@@ -735,6 +778,13 @@ model CuentaCliente {
   // El Cierre de Caja del día solo suma los COBRO en CONTADO: son los
   // únicos que efectivamente entran como billete a la caja física.
   medioPago  MedioPago?
+
+  // Solo en un cobro cruzado (paga una deuda en una moneda con la otra): lo
+  // que realmente entró y a qué cotización se convirtió. `haber` queda en la
+  // moneda de la deuda; Caja cuenta el monto recibido, no el equivalente.
+  montoRecibido  Decimal? @db.Decimal(12, 2)
+  monedaRecibida Moneda?
+  cotizacion     Decimal? @db.Decimal(10, 4)
 
   registradoPorUsuarioId String?
   createdAt              DateTime @default(now())
@@ -754,6 +804,8 @@ enum OrigenCuentaProveedor {
   // le compraste, no solo lo que le debés.
   COMPRA_CONTADO
   PAGO
+  // Espejo de ANULACION_COBRO: contraasiento de un PAGO cargado por error.
+  ANULACION_PAGO
   DEVOLUCION_COMPRA
   ANULACION_COMPRA_CREDITO
 }
@@ -770,11 +822,18 @@ model CuentaProveedor {
   fecha DateTime @db.Date
   debe  Decimal  @default(0) @db.Decimal(12, 2)
   haber Decimal  @default(0) @db.Decimal(12, 2)
+  // Espejo del mismo campo en CuentaCliente — ver ese comentario.
+  moneda Moneda @default(UYU)
 
   origenTipo OrigenCuentaProveedor
   origenId   String?
   referencia String?
   medioPago  MedioPago?
+
+  // Espejo de CuentaCliente: pago cruzado a proveedor.
+  montoRecibido  Decimal? @db.Decimal(12, 2)
+  monedaRecibida Moneda?
+  cotizacion     Decimal? @db.Decimal(10, 4)
 
   registradoPorUsuarioId String?
   createdAt              DateTime @default(now())
@@ -807,13 +866,23 @@ model CierreCaja {
   // se suma a lo vendido/cobrado Contado para calcular el esperado. No
   // existía antes: sin esto, el "esperado" asumía que la caja arrancaba
   // siempre en $0.
-  montoInicial       Decimal @default(0) @db.Decimal(12, 2)
-  totalVentasContado Decimal @db.Decimal(12, 2)
-  totalCobrosContado Decimal @db.Decimal(12, 2)
-  totalEsperado      Decimal @db.Decimal(12, 2)
-  totalContado       Decimal @db.Decimal(12, 2)
-  diferencia         Decimal @db.Decimal(12, 2)
-  observaciones      String?
+  //
+  // Pesos y dólares nunca se mezclan: cada columna de plata está duplicada
+  // en un par UYU/USD, porque el cajón puede tener billetes de las dos
+  // monedas a la vez y cuadran cada una por separado.
+  montoInicialUYU       Decimal @default(0) @db.Decimal(12, 2)
+  montoInicialUSD       Decimal @default(0) @db.Decimal(12, 2)
+  totalVentasContadoUYU Decimal @db.Decimal(12, 2)
+  totalVentasContadoUSD Decimal @db.Decimal(12, 2)
+  totalCobrosContadoUYU Decimal @db.Decimal(12, 2)
+  totalCobrosContadoUSD Decimal @db.Decimal(12, 2)
+  totalEsperadoUYU      Decimal @db.Decimal(12, 2)
+  totalEsperadoUSD      Decimal @db.Decimal(12, 2)
+  totalContadoUYU       Decimal @db.Decimal(12, 2)
+  totalContadoUSD       Decimal @db.Decimal(12, 2)
+  diferenciaUYU         Decimal @db.Decimal(12, 2)
+  diferenciaUSD         Decimal @db.Decimal(12, 2)
+  observaciones         String?
 
   registradoPorUsuarioId  String?
   createdAt               DateTime @default(now())

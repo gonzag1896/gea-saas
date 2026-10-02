@@ -42,13 +42,13 @@ describe("compras — confirmar, anular, devolución", () => {
         ferreteriaId: ferreteria.id,
         proveedorId,
         fecha: new Date(),
-        subtotal: cantidad * costoUnitario,
-        iva: 0,
-        total: cantidad * costoUnitario,
+        subtotalUYU: cantidad * costoUnitario,
+        ivaUYU: 0,
+        totalUYU: cantidad * costoUnitario,
         // ferreteriaId NO se pasa acá: Prisma lo autocompleta a partir del
         // padre porque es parte de la FK compuesta de la relación "compra"
         // (ver comentario en la ruta real, api/compras/route.ts).
-        detalle: { create: [{ productoId, cantidad, costoUnitario, subtotal: cantidad * costoUnitario }] },
+        detalle: { create: [{ productoId, cantidad, costoUnitario, moneda: "UYU", subtotal: cantidad * costoUnitario }] },
       },
     });
   }
@@ -177,7 +177,7 @@ describe("compras — confirmar, anular, devolución", () => {
       proveedorId,
       fecha: new Date().toISOString(),
       medioPago: "CONTADO",
-      detalle: [{ productoId, cantidad: 6, costoUnitario: 8, descuento: 0, tipoIva: "EXENTO" }],
+      detalle: [{ productoId, cantidad: 6, costoUnitario: 8, moneda: "UYU", descuento: 0, tipoIva: "EXENTO" }],
     });
 
     expect(compra.estado).toBe("CONFIRMADO");
@@ -193,15 +193,42 @@ describe("compras — confirmar, anular, devolución", () => {
       proveedorId,
       fecha: new Date().toISOString(),
       medioPago: "CONTADO",
-      detalle: [{ productoId, cantidad: 10, costoUnitario: 100, descuento: 10, tipoIva: "TOTAL" }],
+      detalle: [{ productoId, cantidad: 10, costoUnitario: 100, moneda: "UYU", descuento: 10, tipoIva: "TOTAL" }],
     });
 
-    expect(Number(compra.subtotal)).toBe(900);
-    expect(Number(compra.iva)).toBeCloseTo(198, 5);
-    expect(Number(compra.total)).toBeCloseTo(1098, 5);
+    expect(Number(compra.subtotalUYU)).toBe(900);
+    expect(Number(compra.ivaUYU)).toBeCloseTo(198, 5);
+    expect(Number(compra.totalUYU)).toBeCloseTo(1098, 5);
 
     const detalle = await prisma.compraDetalle.findFirstOrThrow({ where: { compraId: compra.id } });
     expect(Number(detalle.descuento)).toBe(10);
     expect(Number(detalle.subtotal)).toBe(900);
+  });
+
+  // Caso central de esta fase: pesos y dólares nunca se mezclan ni se
+  // convierten entre sí, ni al guardar la compra ni al asentarla en
+  // cuenta corriente de proveedor.
+  it("una compra con líneas en pesos y en dólares suma cada moneda por separado, también en cuenta corriente", async () => {
+    const compra = await crearCompraConfirmada(ferreteria.id, dueno.id, {
+      proveedorId,
+      fecha: new Date().toISOString(),
+      medioPago: "CREDITO",
+      detalle: [
+        { productoId, cantidad: 2, costoUnitario: 50, moneda: "UYU", descuento: 0, tipoIva: "EXENTO" }, // $100
+        { productoId, cantidad: 5, costoUnitario: 4, moneda: "USD", cotizacion: 42, descuento: 0, tipoIva: "EXENTO" }, // US$20
+      ],
+    });
+
+    expect(Number(compra.totalUYU)).toBe(100);
+    expect(Number(compra.totalUSD)).toBe(20);
+
+    const lineaUSD = await prisma.compraDetalle.findFirstOrThrow({ where: { compraId: compra.id, moneda: "USD" } });
+    expect(Number(lineaUSD.cotizacion)).toBe(42);
+    expect(Number(lineaUSD.subtotal)).toBe(20);
+
+    const debeUYU = await prisma.cuentaProveedor.findFirstOrThrow({ where: { origenId: compra.id, moneda: "UYU" } });
+    const debeUSD = await prisma.cuentaProveedor.findFirstOrThrow({ where: { origenId: compra.id, moneda: "USD" } });
+    expect(Number(debeUYU.debe)).toBe(100);
+    expect(Number(debeUSD.debe)).toBe(20);
   });
 });

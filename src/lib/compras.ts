@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import type { Prisma, MedioPago } from "@prisma/client";
+import type { Prisma, MedioPago, Moneda } from "@prisma/client";
 import type { crearCompraSchema } from "@/lib/schemas-compras";
 import { aplicarMovimientoStock } from "@/lib/stock";
 import { auditar } from "@/lib/auditoria";
@@ -7,29 +7,35 @@ import { EntidadNoEncontradaError, EstadoInvalidoError, CantidadInvalidaError } 
 import type { z } from "zod";
 
 // Espejo de asentarVentaEnCuentaCorriente (@/lib/ventas) del lado de
-// proveedores. Mismo motivo para usar COMPRA_CONTADO en las dos filas del
-// par en vez de PAGO: evitar que el cierre de caja cuente esta compra dos
-// veces (Compra.medioPago=CONTADO ya la suma una vez).
+// proveedores, incluida la separación por moneda (hasta dos pares de
+// asientos, uno por cada moneda con monto > 0, nunca convertidos entre
+// sí). Mismo motivo para usar COMPRA_CONTADO en las dos filas del par en
+// vez de PAGO: evitar que el cierre de caja cuente esta compra dos veces
+// (Compra.medioPago=CONTADO ya la suma una vez).
 async function asentarCompraEnCuentaCorriente(
   tx: Prisma.TransactionClient,
-  params: { ferreteriaId: string; proveedorId: string; compraId: string; fecha: Date; total: Prisma.Decimal | number; medioPago: MedioPago; usuarioId: string },
+  params: { ferreteriaId: string; proveedorId: string; compraId: string; fecha: Date; totalUYU: Prisma.Decimal | number; totalUSD: Prisma.Decimal | number; medioPago: MedioPago; usuarioId: string },
 ) {
-  const { ferreteriaId, proveedorId, compraId, fecha, total, medioPago, usuarioId } = params;
+  const { ferreteriaId, proveedorId, compraId, fecha, totalUYU, totalUSD, medioPago, usuarioId } = params;
 
-  if (medioPago === "CREDITO") {
-    await tx.cuentaProveedor.create({
-      data: { ferreteriaId, proveedorId, fecha, debe: total, haber: 0, origenTipo: "COMPRA_CREDITO", origenId: compraId, registradoPorUsuarioId: usuarioId },
-    });
-  } else if (medioPago === "CONTADO" || medioPago === "DEBITO") {
-    await tx.cuentaProveedor.create({
-      data: { ferreteriaId, proveedorId, fecha, debe: total, haber: 0, origenTipo: "COMPRA_CONTADO", origenId: compraId, medioPago, registradoPorUsuarioId: usuarioId },
-    });
-    await tx.cuentaProveedor.create({
-      data: {
-        ferreteriaId, proveedorId, fecha, debe: 0, haber: total, origenTipo: "COMPRA_CONTADO", origenId: compraId,
-        referencia: "Pagado al momento de la compra", medioPago, registradoPorUsuarioId: usuarioId,
-      },
-    });
+  for (const [moneda, total] of [["UYU", totalUYU], ["USD", totalUSD]] as [Moneda, Prisma.Decimal | number][]) {
+    if (Number(total) <= 0) continue;
+
+    if (medioPago === "CREDITO") {
+      await tx.cuentaProveedor.create({
+        data: { ferreteriaId, proveedorId, fecha, debe: total, haber: 0, moneda, origenTipo: "COMPRA_CREDITO", origenId: compraId, registradoPorUsuarioId: usuarioId },
+      });
+    } else if (medioPago === "CONTADO" || medioPago === "DEBITO") {
+      await tx.cuentaProveedor.create({
+        data: { ferreteriaId, proveedorId, fecha, debe: total, haber: 0, moneda, origenTipo: "COMPRA_CONTADO", origenId: compraId, medioPago, registradoPorUsuarioId: usuarioId },
+      });
+      await tx.cuentaProveedor.create({
+        data: {
+          ferreteriaId, proveedorId, fecha, debe: 0, haber: total, moneda, origenTipo: "COMPRA_CONTADO", origenId: compraId,
+          referencia: "Pagado al momento de la compra", medioPago, registradoPorUsuarioId: usuarioId,
+        },
+      });
+    }
   }
 }
 
@@ -45,8 +51,14 @@ export async function crearCompraConfirmada(
   // VentaDetalle — se aplica sobre cantidad*costoUnitario antes de sumar
   // subtotal e IVA de la línea.
   const netoLinea = (l: (typeof datos.detalle)[number]) => l.cantidad * l.costoUnitario * (1 - l.descuento / 100);
-  const subtotal = datos.detalle.reduce((acc, l) => acc + netoLinea(l), 0);
-  const iva = datos.detalle.reduce((acc, l) => acc + (l.tipoIva === "TOTAL" ? netoLinea(l) * 0.22 : 0), 0);
+  // Cada línea suma solo al acumulador de su propia moneda — nunca se
+  // mezclan (ver comentario en el modelo Compra de schema.prisma).
+  const lineasUYU = datos.detalle.filter((l) => l.moneda === "UYU");
+  const lineasUSD = datos.detalle.filter((l) => l.moneda === "USD");
+  const subtotalUYU = lineasUYU.reduce((acc, l) => acc + netoLinea(l), 0);
+  const subtotalUSD = lineasUSD.reduce((acc, l) => acc + netoLinea(l), 0);
+  const ivaUYU = lineasUYU.reduce((acc, l) => acc + (l.tipoIva === "TOTAL" ? netoLinea(l) * 0.22 : 0), 0);
+  const ivaUSD = lineasUSD.reduce((acc, l) => acc + (l.tipoIva === "TOTAL" ? netoLinea(l) * 0.22 : 0), 0);
   const fecha = new Date(datos.fecha);
 
   const compra = await prisma.$transaction(async (tx) => {
@@ -61,14 +73,19 @@ export async function crearCompraConfirmada(
         registradoPorUsuarioId: usuarioId,
         estado: "CONFIRMADO",
         medioPago: datos.medioPago,
-        subtotal,
-        iva,
-        total: subtotal + iva,
+        subtotalUYU,
+        subtotalUSD,
+        ivaUYU,
+        ivaUSD,
+        totalUYU: subtotalUYU + ivaUYU,
+        totalUSD: subtotalUSD + ivaUSD,
         detalle: {
           create: datos.detalle.map((l) => ({
             productoId: l.productoId,
             cantidad: l.cantidad,
             costoUnitario: l.costoUnitario,
+            moneda: l.moneda,
+            cotizacion: l.moneda === "USD" ? l.cotizacion : undefined,
             descuento: l.descuento,
             tipoIva: l.tipoIva,
             subtotal: netoLinea(l),
@@ -99,7 +116,8 @@ export async function crearCompraConfirmada(
     }
 
     await asentarCompraEnCuentaCorriente(tx, {
-      ferreteriaId, proveedorId: compra.proveedorId, compraId: compra.id, fecha: compra.fecha, total: compra.total, medioPago: compra.medioPago, usuarioId,
+      ferreteriaId, proveedorId: compra.proveedorId, compraId: compra.id, fecha: compra.fecha,
+      totalUYU: compra.totalUYU, totalUSD: compra.totalUSD, medioPago: compra.medioPago, usuarioId,
     });
 
     return compra;
@@ -182,7 +200,7 @@ export async function anularCompra(ferreteriaId: string, compraId: string, usuar
     if (habiaConfirmada) {
       const compra = await tx.compra.findUniqueOrThrow({ where: { id_ferreteriaId: { id: compraId, ferreteriaId } } });
       const detalle = await tx.compraDetalle.findMany({ where: { compraId, ferreteriaId }, include: { devoluciones: true } });
-      let montoARevertir = 0;
+      const montoARevertir: Record<"UYU" | "USD", number> = { UYU: 0, USD: 0 };
       for (const linea of detalle) {
         // Si la línea ya tuvo una devolución parcial, esas unidades salieron
         // por un movimiento aparte que ya quedó registrado — revertir de
@@ -204,22 +222,26 @@ export async function anularCompra(ferreteriaId: string, compraId: string, usuar
           origenId: compraId,
           registradoPorUsuarioId: usuarioId,
         });
-        montoARevertir += cantidadARevertir * Number(linea.costoUnitario) * (1 - Number(linea.descuento) / 100);
+        montoARevertir[linea.moneda] += cantidadARevertir * Number(linea.costoUnitario) * (1 - Number(linea.descuento) / 100);
       }
 
-      if (compra.medioPago === "CREDITO" && montoARevertir > 0) {
-        await tx.cuentaProveedor.create({
-          data: {
-            ferreteriaId,
-            proveedorId: compra.proveedorId,
-            fecha: new Date(),
-            debe: 0,
-            haber: montoARevertir,
-            origenTipo: "ANULACION_COMPRA_CREDITO",
-            origenId: compraId,
-            registradoPorUsuarioId: usuarioId,
-          },
-        });
+      if (compra.medioPago === "CREDITO") {
+        for (const moneda of ["UYU", "USD"] as const) {
+          if (montoARevertir[moneda] <= 0) continue;
+          await tx.cuentaProveedor.create({
+            data: {
+              ferreteriaId,
+              proveedorId: compra.proveedorId,
+              fecha: new Date(),
+              debe: 0,
+              haber: montoARevertir[moneda],
+              moneda,
+              origenTipo: "ANULACION_COMPRA_CREDITO",
+              origenId: compraId,
+              registradoPorUsuarioId: usuarioId,
+            },
+          });
+        }
       }
     }
   });
@@ -275,6 +297,7 @@ export async function registrarDevolucionCompra(
           fecha: new Date(),
           debe: 0,
           haber: montoDevuelto,
+          moneda: linea.moneda,
           origenTipo: "DEVOLUCION_COMPRA",
           origenId: compraDetalleId,
           registradoPorUsuarioId: usuarioId,

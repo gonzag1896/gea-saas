@@ -29,10 +29,10 @@ describe("stock bajo y reposición (filtrado en la base)", () => {
     // "sb-rapido" vendió 60 unidades en el período: 2/día -> le quedan 5 días.
     const cliente = await prisma.cliente.create({ data: { ferreteriaId, nombre: "Cliente" } });
     const venta = await prisma.venta.create({
-      data: { ferreteriaId, clienteId: cliente.id, fecha: new Date(), estado: "CONFIRMADO", total: 600, subtotal: 600 },
+      data: { ferreteriaId, clienteId: cliente.id, fecha: new Date(), estado: "CONFIRMADO", totalUYU: 600, subtotalUYU: 600 },
     });
     await prisma.ventaDetalle.create({
-      data: { ferreteriaId, ventaId: venta.id, productoId: "sb-rapido", precio: 10, cantidad: 60, total: 600, totalVigente: 600 },
+      data: { ferreteriaId, ventaId: venta.id, productoId: "sb-rapido", precio: 10, moneda: "UYU", cantidad: 60, total: 600, totalVigente: 600 },
     });
   });
 

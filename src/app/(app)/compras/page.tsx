@@ -11,11 +11,11 @@ export default async function ComprasPage() {
   const { ferreteriaId } = contexto;
   const comprasRaw = await prisma.compra.findMany({
     where: { ferreteriaId },
-    select: { id: true, fecha: true, estado: true, medioPago: true, total: true, proveedor: { select: { nombre: true } } },
+    select: { id: true, fecha: true, estado: true, medioPago: true, totalUYU: true, totalUSD: true, proveedor: { select: { nombre: true } } },
     orderBy: { fecha: "desc" },
   });
 
-  const compras = comprasRaw.map((c) => ({ ...c, total: c.total.toString() }));
+  const compras = comprasRaw.map((c) => ({ ...c, totalUYU: c.totalUYU.toString(), totalUSD: c.totalUSD.toString() }));
 
   return (
     <ComprasClient

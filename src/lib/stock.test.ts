@@ -72,16 +72,16 @@ describe("stock — ajuste manual", () => {
 
     const compra = await prisma.compra.create({
       data: {
-        ferreteriaId: ferreteria.id, proveedorId, fecha: new Date(), subtotal: 100, iva: 0, total: 100,
-        detalle: { create: [{ productoId, cantidad: 15, costoUnitario: 10, subtotal: 150 }] },
+        ferreteriaId: ferreteria.id, proveedorId, fecha: new Date(), subtotalUYU: 100, ivaUYU: 0, totalUYU: 100,
+        detalle: { create: [{ productoId, cantidad: 15, costoUnitario: 10, moneda: "UYU", subtotal: 150 }] },
       },
     });
     await confirmarCompra(ferreteria.id, compra.id, dueno.id);
 
     const venta = await prisma.venta.create({
       data: {
-        ferreteriaId: ferreteria.id, clienteId, fecha: new Date(), subtotal: 80, iva: 0, total: 80,
-        detalle: { create: [{ productoId, cantidad: 8, precio: 10, total: 80, totalVigente: 80 }] },
+        ferreteriaId: ferreteria.id, clienteId, fecha: new Date(), subtotalUYU: 80, ivaUYU: 0, totalUYU: 80,
+        detalle: { create: [{ productoId, cantidad: 8, precio: 10, moneda: "UYU", total: 80, totalVigente: 80 }] },
       },
     });
     await confirmarVenta(ferreteria.id, venta.id, dueno.id);

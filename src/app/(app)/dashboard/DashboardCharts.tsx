@@ -32,11 +32,11 @@ export function DashboardCharts({
   desde: desdeInicial,
   hasta: hastaInicial,
 }: {
-  ventasDiarias: { fecha: string; total: number }[] | null;
-  comprasDiarias: { fecha: string; total: number }[] | null;
-  comprasPorProveedor: { proveedor: string; total: number }[] | null;
-  ventasPorMedioPago: { medioPago: string; total: number }[] | null;
-  topProductosVendidos: { producto: string; cantidad: number; total: number }[] | null;
+  ventasDiarias: { fecha: string; totalUYU: number }[] | null;
+  comprasDiarias: { fecha: string; totalUYU: number }[] | null;
+  comprasPorProveedor: { proveedor: string; totalUYU: number }[] | null;
+  ventasPorMedioPago: { medioPago: string; totalUYU: number }[] | null;
+  topProductosVendidos: { producto: string; cantidad: number; totalUYU: number }[] | null;
   desde: string;
   hasta: string;
 }) {
@@ -53,8 +53,8 @@ export function DashboardCharts({
     const fechas = new Set<string>();
     (ventasDiarias ?? []).forEach((v) => fechas.add(v.fecha));
     (comprasDiarias ?? []).forEach((c) => fechas.add(c.fecha));
-    const ventasPorFecha = new Map((ventasDiarias ?? []).map((v) => [v.fecha, v.total]));
-    const comprasPorFecha = new Map((comprasDiarias ?? []).map((c) => [c.fecha, c.total]));
+    const ventasPorFecha = new Map((ventasDiarias ?? []).map((v) => [v.fecha, v.totalUYU]));
+    const comprasPorFecha = new Map((comprasDiarias ?? []).map((c) => [c.fecha, c.totalUYU]));
     return Array.from(fechas)
       .sort()
       .map((fecha) => ({
@@ -64,7 +64,7 @@ export function DashboardCharts({
       }));
   }, [ventasDiarias, comprasDiarias]);
 
-  const totalMedioPago = (ventasPorMedioPago ?? []).reduce((acc, m) => acc + m.total, 0);
+  const totalMedioPago = (ventasPorMedioPago ?? []).reduce((acc, m) => acc + m.totalUYU, 0);
 
   return (
     <>
@@ -120,7 +120,7 @@ export function DashboardCharts({
                   <Tooltip
                     formatter={(value: number, _name, entry: { payload?: { cantidad: number } }) => [`$ ${formatoMoneda(value)} · ${entry.payload?.cantidad} u.`, "Vendido"]}
                   />
-                  <Bar dataKey="total" name="Total" fill="var(--color-primary)" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="totalUYU" name="Total" fill="var(--color-primary)" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -139,7 +139,7 @@ export function DashboardCharts({
                   <PieChart>
                     <Pie
                       data={ventasPorMedioPago}
-                      dataKey="total"
+                      dataKey="totalUYU"
                       nameKey="medioPago"
                       innerRadius={55}
                       outerRadius={85}
@@ -160,7 +160,7 @@ export function DashboardCharts({
                         {MEDIO_PAGO_LABEL[m.medioPago] ?? m.medioPago}
                       </span>
                       <span className="font-mono tabular-nums text-muted-foreground">
-                        {totalMedioPago > 0 ? Math.round((m.total / totalMedioPago) * 100) : 0}%
+                        {totalMedioPago > 0 ? Math.round((m.totalUYU / totalMedioPago) * 100) : 0}%
                       </span>
                     </div>
                   ))}
@@ -183,7 +183,7 @@ export function DashboardCharts({
                   <XAxis dataKey="proveedor" stroke="var(--color-muted-foreground)" fontSize={12} />
                   <YAxis stroke="var(--color-muted-foreground)" fontSize={12} />
                   <Tooltip formatter={(v: number) => `$ ${formatoMoneda(v)}`} />
-                  <Bar dataKey="total" name="Total" fill="var(--color-primary)" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="totalUYU" name="Total" fill="var(--color-primary)" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
