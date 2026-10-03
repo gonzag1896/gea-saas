@@ -13,10 +13,11 @@ import { Alert } from "@/components/ui/Alert";
 import { Table } from "@/components/ui/Table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PromptDialog } from "@/components/ui/PromptDialog";
+import { ClienteAutocomplete } from "@/components/ui/ClienteAutocomplete";
 import { ProductoAutocomplete, type ProductoOpcion } from "@/components/ui/ProductoAutocomplete";
 import { ordenarPorNombre } from "@/lib/ordenar";
 
-type ClienteOpcion = { id: string; nombre: string; listaPrecioId: string | null };
+type ClienteOpcion = { id: string; nombre: string; rut?: string | null; listaPrecioId: string | null };
 type Linea = { productoId: string; nombre: string; cantidad: string; precio: string; descuento: string; tipoIva: "EXENTO" | "TOTAL"; moneda: "UYU" | "USD" };
 
 const ETIQUETA_MEDIO_PAGO: Record<"CONTADO" | "CREDITO" | "TRANSFERENCIA" | "DEBITO", string> = {
@@ -222,10 +223,10 @@ export function VentaFormClient({
                 </button>
               }
             >
-              <Select
-                value={clienteId}
-                onChange={async (e) => {
-                  const nuevoId = e.target.value;
+              <ClienteAutocomplete
+                clientes={clientesOrdenados}
+                seleccionadoId={clienteId}
+                onChange={async (nuevoId) => {
                   setClienteId(nuevoId);
                   // Cambiar de cliente puede cambiar la lista de precio
                   // aplicable — si ya hay un producto elegido en la línea
@@ -241,9 +242,7 @@ export function VentaFormClient({
                     setLineaActual((l) => ({ ...l, precio: actualizado.precioVenta }));
                   }
                 }}
-              >
-                {clientesOrdenados.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-              </Select>
+              />
             </FormField>
             <FormField label="Fecha" required>
               <Input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
