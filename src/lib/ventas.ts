@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import type { Prisma, MedioPago, Moneda } from "@prisma/client";
 import type { crearVentaSchema } from "@/lib/schemas-ventas";
 import { aplicarMovimientoStock } from "@/lib/stock";
+import { conIva } from "@/lib/iva";
 import { auditar } from "@/lib/auditoria";
 import { EntidadNoEncontradaError, EstadoInvalidoError, CantidadInvalidaError } from "@/lib/errores-dominio";
 import type { z } from "zod";
@@ -225,7 +226,8 @@ export async function anularVenta(ferreteriaId: string, ventaId: string, usuario
           registradoPorUsuarioId: usuarioId,
         });
       }
-      montoARevertir[linea.moneda] += Number(linea.totalVigente);
+      // totalVigente es sin IVA; la deuda en cuenta corriente lo incluye.
+      montoARevertir[linea.moneda] += conIva(Number(linea.totalVigente), linea.tipoIva);
     }
 
     if (venta.medioPago === "CREDITO") {
@@ -304,7 +306,7 @@ export async function registrarDevolucionVenta(
           clienteId: linea.venta.clienteId,
           fecha: new Date(),
           debe: 0,
-          haber: montoDevuelto,
+          haber: conIva(montoDevuelto, linea.tipoIva),
           moneda: linea.moneda,
           origenTipo: "DEVOLUCION_VENTA",
           origenId: ventaDetalleId,

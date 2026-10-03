@@ -231,4 +231,27 @@ describe("compras — confirmar, anular, devolución", () => {
     expect(Number(debeUYU.debe)).toBe(100);
     expect(Number(debeUSD.debe)).toBe(20);
   });
+
+  it("con IVA: devolver y luego anular una compra a crédito deja la deuda con el proveedor en 0 (acredita el IVA)", async () => {
+    const proveedor = await prisma.proveedor.create({ data: { ferreteriaId: ferreteria.id, nombre: "Proveedor IVA" } });
+    // 10 u. a $50 + IVA 22% = deuda de $610.
+    const compra = await crearCompraConfirmada(ferreteria.id, dueno.id, {
+      proveedorId: proveedor.id,
+      fecha: new Date().toISOString(),
+      medioPago: "CREDITO",
+      detalle: [{ productoId, cantidad: 10, costoUnitario: 50, moneda: "UYU", descuento: 0, tipoIva: "TOTAL" }],
+    });
+    const saldo = async () => {
+      const r = await prisma.cuentaProveedor.aggregate({ where: { proveedorId: proveedor.id, moneda: "UYU" }, _sum: { debe: true, haber: true } });
+      return Number(r._sum.debe) - Number(r._sum.haber);
+    };
+    expect(await saldo()).toBeCloseTo(610, 2);
+
+    const linea = await prisma.compraDetalle.findFirstOrThrow({ where: { compraId: compra.id } });
+    await registrarDevolucionCompra(ferreteria.id, linea.id, 2, undefined, dueno.id); // 2 × 50 × 1.22 = 122
+    expect(await saldo()).toBeCloseTo(488, 2);
+
+    await anularCompra(ferreteria.id, compra.id, dueno.id, "error");
+    expect(await saldo()).toBeCloseTo(0, 2);
+  });
 });

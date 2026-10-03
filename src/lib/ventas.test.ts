@@ -236,4 +236,58 @@ describe("ventas — confirmar, anular, devolución, cuenta corriente", () => {
     expect(Number(saldoUYU._sum.debe) - Number(saldoUYU._sum.haber)).toBe(0);
     expect(Number(saldoUSD._sum.debe) - Number(saldoUSD._sum.haber)).toBe(0);
   });
+
+  it("caso real de producción (Gabarro): venta $122.98 con IVA, dos devoluciones de $26.22 netos y anulación → saldo 0, no $22.18", async () => {
+    const cliente = await prisma.cliente.create({ data: { ferreteriaId: ferreteria.id, nombre: "Gabarro" } });
+    // Neto 2 × 26.22 + 48.36 = 100.80; con IVA 22% = $122.98 (el IVA es $22.18).
+    const venta = await crearVentaConfirmada(ferreteria.id, dueno.id, {
+      clienteId: cliente.id,
+      fecha: new Date().toISOString(),
+      medioPago: "CREDITO",
+      entrega: 0,
+      detalle: [
+        { productoId, cantidad: 2, precio: 26.22, moneda: "UYU", descuento: 0, tipoIva: "TOTAL" },
+        { productoId, cantidad: 1, precio: 48.36, moneda: "UYU", descuento: 0, tipoIva: "TOTAL" },
+      ],
+    });
+    const movimientos = () => prisma.cuentaCliente.findMany({ where: { clienteId: cliente.id }, orderBy: { createdAt: "asc" } });
+    const saldo = async () => (await movimientos()).reduce((acc, m) => acc + Number(m.debe) - Number(m.haber), 0);
+    expect(await saldo()).toBeCloseTo(122.98, 2);
+
+    const lineaA = await prisma.ventaDetalle.findFirstOrThrow({ where: { ventaId: venta.id, cantidad: 2 } });
+    await registrarDevolucionVenta(ferreteria.id, lineaA.id, 1, undefined, dueno.id);
+    await registrarDevolucionVenta(ferreteria.id, lineaA.id, 1, undefined, dueno.id);
+    // Cada devolución acredita el neto + IVA (26.22 × 1.22 ≈ 31.99), no solo 26.22.
+    const devoluciones = (await movimientos()).filter((m) => m.origenTipo === "DEVOLUCION_VENTA");
+    expect(devoluciones.map((d) => Number(d.haber))).toEqual([31.99, 31.99]);
+
+    await anularVenta(ferreteria.id, venta.id, dueno.id, "error");
+    const anulacion = (await movimientos()).find((m) => m.origenTipo === "ANULACION_VENTA_CREDITO");
+    expect(Number(anulacion?.haber)).toBeCloseTo(59, 2); // 48.36 × 1.22
+    expect(await saldo()).toBeCloseTo(0, 2);
+  });
+
+  it("con IVA: devolver artículos y luego anular la venta a crédito deja el saldo en 0 (acredita el IVA)", async () => {
+    const cliente = await prisma.cliente.create({ data: { ferreteriaId: ferreteria.id, nombre: "Cliente IVA" } });
+    // 10 u. a $100 + IVA 22% = deuda de $1220.
+    const venta = await crearVentaConfirmada(ferreteria.id, dueno.id, {
+      clienteId: cliente.id,
+      fecha: new Date().toISOString(),
+      medioPago: "CREDITO",
+      entrega: 0,
+      detalle: [{ productoId, cantidad: 10, precio: 100, moneda: "UYU", descuento: 0, tipoIva: "TOTAL" }],
+    });
+    const saldo = async () => {
+      const r = await prisma.cuentaCliente.aggregate({ where: { clienteId: cliente.id, moneda: "UYU" }, _sum: { debe: true, haber: true } });
+      return Number(r._sum.debe) - Number(r._sum.haber);
+    };
+    expect(await saldo()).toBeCloseTo(1220, 2);
+
+    const linea = await prisma.ventaDetalle.findFirstOrThrow({ where: { ventaId: venta.id } });
+    await registrarDevolucionVenta(ferreteria.id, linea.id, 2, undefined, dueno.id); // 2 × 100 × 1.22 = 244
+    expect(await saldo()).toBeCloseTo(976, 2);
+
+    await anularVenta(ferreteria.id, venta.id, dueno.id, "error");
+    expect(await saldo()).toBeCloseTo(0, 2);
+  });
 });

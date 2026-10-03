@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import type { Prisma, MedioPago, Moneda } from "@prisma/client";
 import type { crearCompraSchema } from "@/lib/schemas-compras";
 import { aplicarMovimientoStock } from "@/lib/stock";
+import { conIva } from "@/lib/iva";
 import { auditar } from "@/lib/auditoria";
 import { EntidadNoEncontradaError, EstadoInvalidoError, CantidadInvalidaError } from "@/lib/errores-dominio";
 import type { z } from "zod";
@@ -222,7 +223,8 @@ export async function anularCompra(ferreteriaId: string, compraId: string, usuar
           origenId: compraId,
           registradoPorUsuarioId: usuarioId,
         });
-        montoARevertir[linea.moneda] += cantidadARevertir * Number(linea.costoUnitario) * (1 - Number(linea.descuento) / 100);
+        // El costo es sin IVA; la deuda con el proveedor lo incluye.
+        montoARevertir[linea.moneda] += conIva(cantidadARevertir * Number(linea.costoUnitario) * (1 - Number(linea.descuento) / 100), linea.tipoIva);
       }
 
       if (compra.medioPago === "CREDITO") {
@@ -296,7 +298,7 @@ export async function registrarDevolucionCompra(
           proveedorId: linea.compra.proveedorId,
           fecha: new Date(),
           debe: 0,
-          haber: montoDevuelto,
+          haber: conIva(montoDevuelto, linea.tipoIva),
           moneda: linea.moneda,
           origenTipo: "DEVOLUCION_COMPRA",
           origenId: compraDetalleId,
