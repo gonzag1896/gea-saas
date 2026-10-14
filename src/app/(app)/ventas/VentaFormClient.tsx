@@ -52,7 +52,7 @@ export function VentaFormClient({
   const [creandoCliente, setCreandoCliente] = useState(false);
   const [errorCliente, setErrorCliente] = useState<string | null>(null);
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
-  const [medioPago, setMedioPago] = useState<"CONTADO" | "CREDITO" | "TRANSFERENCIA" | "DEBITO">("CONTADO");
+  const [medioPago, setMedioPago] = useState<"CONTADO" | "CREDITO" | "TRANSFERENCIA" | "DEBITO">("CREDITO");
   const [lineas, setLineas] = useState<Linea[]>([]);
   const [productoActual, setProductoActual] = useState<ProductoOpcion | null>(null);
   const [lineaActual, setLineaActual] = useState<Linea>({
