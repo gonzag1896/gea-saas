@@ -85,7 +85,7 @@ export async function registrarCobro(
   // Con cruce, `monto` es lo recibido en `cruce.monedaRecibida` y `moneda`
   // es la deuda que cancela (ver cobro-cruzado.ts).
   const { haber, ...recibido } = resolverMontos(monto, moneda, cruce);
-  await prisma.cuentaCliente.create({
+  const movimiento = await prisma.cuentaCliente.create({
     data: {
       ferreteriaId,
       clienteId,
@@ -109,6 +109,8 @@ export async function registrarCobro(
     entidadId: clienteId,
     detalle: { monto, moneda, referencia, medioPago, ...(cruce && { cruce }) },
   });
+
+  return { id: movimiento.id };
 }
 
 // Anula un cobro cargado por error. El libro es append-only: el cobro NO

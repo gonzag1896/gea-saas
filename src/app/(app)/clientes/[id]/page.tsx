@@ -28,6 +28,7 @@ export default async function ClienteCuentaCorrientePage({ params }: { params: {
   const movimientos = movimientosRaw.map((m) => ({
     id: m.id,
     fecha: m.fecha,
+    createdAt: m.createdAt,
     debe: m.debe.toString(),
     haber: m.haber.toString(),
     moneda: m.moneda,

@@ -52,7 +52,7 @@ export async function registrarPagoProveedor(
   // Con cruce, `monto` es lo entregado en `cruce.monedaRecibida` y `moneda`
   // es la deuda que cancela (ver cobro-cruzado.ts).
   const { haber, ...entregado } = resolverMontos(monto, moneda, cruce);
-  await prisma.cuentaProveedor.create({
+  const movimiento = await prisma.cuentaProveedor.create({
     data: {
       ferreteriaId,
       proveedorId,
@@ -76,6 +76,8 @@ export async function registrarPagoProveedor(
     entidadId: proveedorId,
     detalle: { monto, moneda, referencia, medioPago, ...(cruce && { cruce }) },
   });
+
+  return { id: movimiento.id };
 }
 
 // Espejo de anularCobro (@/lib/cuenta-corriente): un pago a proveedor

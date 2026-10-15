@@ -18,6 +18,6 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   const { monto, referencia, medioPago, moneda, monedaRecibida, cotizacion } = parsed.data;
   const cruce = monedaRecibida && cotizacion ? { monedaRecibida, cotizacion } : undefined;
-  await registrarCobro(ferreteriaId, params.id, monto, usuarioId, referencia, medioPago, moneda, cruce);
-  return NextResponse.json({ ok: true }, { status: 201 });
+  const { id } = await registrarCobro(ferreteriaId, params.id, monto, usuarioId, referencia, medioPago, moneda, cruce);
+  return NextResponse.json({ ok: true, id }, { status: 201 });
 }

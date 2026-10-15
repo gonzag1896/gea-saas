@@ -1,57 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, CreditCard, TrendingDown, TrendingUp, Phone } from "lucide-react";
+import { ChevronLeft, HandCoins, Phone } from "lucide-react";
 import Link from "next/link";
-import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { PromptDialog } from "@/components/ui/PromptDialog";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { cn } from "@/lib/cn";
-import { formatearFecha } from "@/lib/fecha";
+import { EstadoCuenta } from "@/components/estado-cuenta/EstadoCuenta";
+import { RegistrarMovimientoDialog } from "@/components/estado-cuenta/RegistrarMovimientoDialog";
+import { monedasConMovimientos, type Moneda } from "@/lib/estado-cuenta";
 
 type Movimiento = {
   id: string;
   fecha: Date;
+  createdAt: Date;
   debe: string;
   haber: string;
-  moneda: "UYU" | "USD";
+  moneda: Moneda;
   origenTipo: string;
   referencia: string | null;
   montoRecibido: string | null;
-  monedaRecibida: "UYU" | "USD" | null;
+  monedaRecibida: Moneda | null;
   cotizacion: string | null;
   anulado: boolean;
 };
 type Proveedor = { id: string; nombre: string; telefono: string | null };
 type Saldo = { saldoUYU: number; saldoUSD: number };
-
-const ETIQUETA_ORIGEN: Record<string, string> = {
-  COMPRA_CREDITO: "Compra a crédito",
-  // COMPRA_CONTADO cubre las dos filas del par Debe+Haber de una compra
-  // Contado/Débito -- se distinguen abajo (esDeuda) porque el mismo
-  // origenTipo etiqueta las dos.
-  COMPRA_CONTADO: "Compra contado",
-  PAGO: "Pago",
-  DEVOLUCION_COMPRA: "Devolución",
-  ANULACION_COMPRA_CREDITO: "Anulación de compra",
-  ANULACION_PAGO: "Anulación de pago",
-};
-
-const BADGE_TIPO: Record<string, { bg: string; text: string; icon: React.ReactNode }> = {
-  COMPRA_CREDITO: { bg: "bg-red-50", text: "text-red-700", icon: <TrendingDown className="h-4 w-4" /> },
-  COMPRA_CONTADO: { bg: "bg-green-50", text: "text-green-700", icon: <TrendingUp className="h-4 w-4" /> },
-  PAGO: { bg: "bg-green-50", text: "text-green-700", icon: <TrendingUp className="h-4 w-4" /> },
-  DEVOLUCION_COMPRA: { bg: "bg-blue-50", text: "text-blue-700", icon: <TrendingUp className="h-4 w-4" /> },
-  ANULACION_COMPRA_CREDITO: { bg: "bg-gray-50", text: "text-gray-700", icon: <TrendingDown className="h-4 w-4" /> },
-  ANULACION_PAGO: { bg: "bg-gray-50", text: "text-gray-700", icon: <TrendingDown className="h-4 w-4" /> },
-};
-
-const simbolo = (m: "UYU" | "USD") => (m === "USD" ? "US$" : "$");
 
 export function ProveedorCuentaCorrienteClient({
   proveedor,
@@ -69,21 +45,19 @@ export function ProveedorCuentaCorrienteClient({
   puedeAnular: boolean;
 }) {
   const router = useRouter();
-  const [monto, setMonto] = useState("");
-  // `moneda` = en qué moneda paga; `monedaDeuda` = qué deuda cancela. Si
-  // difieren es un pago cruzado y hace falta la cotización.
-  const [moneda, setMoneda] = useState<"UYU" | "USD">("UYU");
-  const [monedaDeuda, setMonedaDeuda] = useState<"UYU" | "USD">("UYU");
-  const [cotizacion, setCotizacion] = useState(cotizacionDolar ?? "");
-  const cruzado = moneda !== monedaDeuda;
-  const equivalente = cruzado && Number(monto) > 0 && Number(cotizacion) > 0
-    ? (monedaDeuda === "UYU" ? Number(monto) * Number(cotizacion) : Number(monto) / Number(cotizacion))
-    : null;
-  const [referencia, setReferencia] = useState("");
-  const [medioPago, setMedioPago] = useState<"CONTADO" | "TRANSFERENCIA" | "DEBITO">("CONTADO");
   const [error, setError] = useState<string | null>(null);
   const [pagoAAnular, setPagoAAnular] = useState<Movimiento | null>(null);
   const [anulando, setAnulando] = useState(false);
+  // Moneda con la que se abre la ventana de pago (null = cerrada).
+  const [pagando, setPagando] = useState<Moneda | null>(null);
+  const [resaltarId, setResaltarId] = useState<string | null>(null);
+
+  // El resaltado de la fila recién pagada dura unos segundos.
+  useEffect(() => {
+    if (!resaltarId) return;
+    const t = setTimeout(() => setResaltarId(null), 8000);
+    return () => clearTimeout(t);
+  }, [resaltarId]);
 
   async function anularPago(motivo: string) {
     if (!pagoAAnular) return;
@@ -100,27 +74,6 @@ export function ProveedorCuentaCorrienteClient({
     router.refresh();
   }
 
-  async function registrarPago(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    const res = await fetch(`/api/proveedores/${proveedor.id}/pago`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        monto: Number(monto),
-        moneda: monedaDeuda,
-        ...(cruzado && { monedaRecibida: moneda, cotizacion: Number(cotizacion) }),
-        referencia: referencia || undefined,
-        medioPago,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) return setError(data.error);
-    setMonto("");
-    setReferencia("");
-    router.refresh();
-  }
-
   // Igual criterio que del lado de clientes: deuda en una moneda y
   // crédito a favor en la otra son dos saldos independientes.
   const saldos = [
@@ -128,10 +81,17 @@ export function ProveedorCuentaCorrienteClient({
     { moneda: "USD" as const, simbolo: "US$", monto: saldo.saldoUSD },
   ].filter((s) => s.monto !== 0);
 
+  const monedasDisponibles: Moneda[] = (() => {
+    const m = monedasConMovimientos(movimientosIniciales);
+    return m.length > 0 ? m : ["UYU"];
+  })();
+  // Al abrir desde el botón general se arranca por la moneda en la que se debe.
+  const monedaConDeuda: Moneda = saldo.saldoUYU > 0 ? "UYU" : saldo.saldoUSD > 0 ? "USD" : monedasDisponibles[0];
+
   return (
     <div className="flex flex-col gap-6">
-      {/* Header con navegación y datos principales */}
-      <div className="flex items-start justify-between gap-4">
+      {/* Header con navegación, acción principal y saldos */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <Link href="/proveedores" className="mb-3 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground">
             <ChevronLeft className="h-4 w-4" />
@@ -143,6 +103,11 @@ export function ProveedorCuentaCorrienteClient({
               <Phone className="h-4 w-4" />
               {proveedor.telefono}
             </p>
+          )}
+          {puedePagar && (
+            <Button type="button" variant="success" className="mt-4" onClick={() => setPagando(monedaConDeuda)}>
+              <HandCoins className="mr-2 h-4 w-4" /> Registrar pago
+            </Button>
           )}
         </div>
 
@@ -164,174 +129,45 @@ export function ProveedorCuentaCorrienteClient({
                   {s.simbolo}{Math.abs(s.monto).toFixed(2)}
                 </p>
                 <p className={cn("text-xs font-medium mt-2", esDeuda ? "text-red-700" : "text-green-700")}>
-                  {esDeuda ? "A favor del proveedor" : "Adeudado"}
+                  {esDeuda ? "Le debemos" : "A nuestro favor"}
                 </p>
+                {esDeuda && puedePagar && (
+                  <Button type="button" size="sm" variant="success" className="mt-3" onClick={() => setPagando(s.moneda)}>
+                    Pagar
+                  </Button>
+                )}
               </div>
             );
           })}
         </div>
       </div>
 
-      {/* Formulario de pago - Mejorado */}
-      {puedePagar && (
-        <Card className="border-2 border-blue-100 bg-blue-50/50">
-          <div className="flex items-center gap-3 mb-4">
-            <CreditCard className="h-5 w-5 text-blue-600" />
-            <h2 className="text-lg font-semibold text-foreground">Registrar Pago</h2>
-          </div>
+      {error && <Alert>{error}</Alert>}
 
-          <form onSubmit={registrarPago} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Monto</label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
-                  value={monto}
-                  onChange={(e) => setMonto(e.target.value)}
-                  placeholder="0.00"
-                  required
-                  className="text-lg"
-                />
-              </div>
+      <EstadoCuenta
+        tipo="proveedor"
+        entidadId={proveedor.id}
+        movimientos={movimientosIniciales}
+        puedeAnular={puedeAnular}
+        onAnular={(id) => setPagoAAnular(movimientosIniciales.find((m) => m.id === id) ?? null)}
+        resaltarId={resaltarId}
+      />
 
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Paga en</label>
-                <Select
-                  value={moneda}
-                  onChange={(e) => {
-                    const m = e.target.value as "UYU" | "USD";
-                    setMoneda(m);
-                    setMonedaDeuda(m);
-                  }}
-                >
-                  <option value="UYU">Pesos ($)</option>
-                  <option value="USD">Dólares (US$)</option>
-                </Select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Cancela deuda en</label>
-                <Select value={monedaDeuda} onChange={(e) => setMonedaDeuda(e.target.value as "UYU" | "USD")}>
-                  <option value="UYU">Pesos ($)</option>
-                  <option value="USD">Dólares (US$)</option>
-                </Select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Método de Pago</label>
-                <Select
-                  value={medioPago}
-                  onChange={(e) => setMedioPago(e.target.value as typeof medioPago)}
-                >
-                  <option value="CONTADO">Efectivo</option>
-                  <option value="DEBITO">Débito</option>
-                  <option value="TRANSFERENCIA">Transferencia</option>
-                </Select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">Referencia</label>
-                <Input
-                  value={referencia}
-                  onChange={(e) => setReferencia(e.target.value)}
-                  placeholder="Ej: Comprobante 123"
-                />
-              </div>
-            </div>
-
-            {cruzado && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">Cotización del dólar</label>
-                  <Input
-                    type="number"
-                    step="0.0001"
-                    min="0.0001"
-                    value={cotizacion}
-                    onChange={(e) => setCotizacion(e.target.value)}
-                    required
-                  />
-                </div>
-                <p className="md:col-span-2 self-end pb-2 text-sm text-muted-foreground">
-                  {equivalente !== null
-                    ? `Entrega ${simbolo(moneda)}${Number(monto).toFixed(2)} y cancela ${simbolo(monedaDeuda)}${equivalente.toFixed(2)} de deuda.`
-                    : "Ingresá el monto y la cotización para ver cuánto cancela."}
-                </p>
-              </div>
-            )}
-
-            {error && <Alert>{error}</Alert>}
-
-            <div className="flex gap-3 pt-2">
-              <Button type="submit" className="bg-green-600 hover:bg-green-700">
-                ✓ Registrar Pago
-              </Button>
-            </div>
-          </form>
-        </Card>
+      {pagando && (
+        <RegistrarMovimientoDialog
+          tipo="proveedor"
+          entidadId={proveedor.id}
+          monedaInicial={pagando}
+          monedasDisponibles={monedasDisponibles}
+          saldo={saldo}
+          cotizacionDolar={cotizacionDolar}
+          onClose={() => setPagando(null)}
+          onRegistrado={(id) => {
+            setResaltarId(id);
+            router.refresh();
+          }}
+        />
       )}
-
-      {/* Historial de movimientos */}
-      <div>
-        <h2 className="text-lg font-semibold text-foreground mb-4">Historial de Movimientos</h2>
-
-        {movimientosIniciales.length === 0 ? (
-          <EmptyState message="Todavía no hay movimientos para este proveedor." />
-        ) : (
-          <div className="overflow-x-auto">
-            <div className="space-y-2">
-              {movimientosIniciales.map((m) => {
-                const esDeuda = Number(m.debe) > 0;
-                const badge = BADGE_TIPO[m.origenTipo] || BADGE_TIPO.ANULACION_COMPRA_CREDITO;
-                const monto = esDeuda ? m.debe : m.haber;
-                const etiqueta = m.origenTipo === "COMPRA_CONTADO"
-                  ? (esDeuda ? "Compra contado" : "Pagado en el acto")
-                  : (ETIQUETA_ORIGEN[m.origenTipo] ?? m.origenTipo);
-
-                return (
-                  <div
-                    key={m.id}
-                    className="flex items-center justify-between p-4 bg-white border border-gray-200 rounded-lg hover:shadow-md transition-shadow"
-                  >
-                    <div className="flex items-center gap-4 flex-1">
-                      <div className={cn("p-2 rounded-lg", badge.bg)}>
-                        <span className={cn("text-lg", badge.text)}>{badge.icon}</span>
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-foreground">{etiqueta}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {formatearFecha(m.fecha)}
-                          {m.montoRecibido && m.monedaRecibida && ` • Recibido ${simbolo(m.monedaRecibida)}${Number(m.montoRecibido).toFixed(2)} a cotización ${Number(m.cotizacion)}`}
-                          {m.referencia && ` • ${m.referencia}`}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3 text-right">
-                      <p className={cn(
-                        "text-lg font-bold font-mono tabular-nums",
-                        esDeuda ? "text-red-600" : "text-green-600",
-                        m.anulado && "text-gray-400 line-through"
-                      )}>
-                        {esDeuda ? "+" : "-"}{m.moneda === "USD" ? "US$" : "$"}{Number(monto).toFixed(2)}
-                      </p>
-                      {m.anulado && (
-                        <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-500">Anulado</span>
-                      )}
-                      {puedeAnular && m.origenTipo === "PAGO" && !m.anulado && (
-                        <Button type="button" variant="outline" size="sm" onClick={() => setPagoAAnular(m)}>Anular</Button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-      </div>
 
       <PromptDialog
         open={pagoAAnular !== null}
