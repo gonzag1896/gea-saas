@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, RotateCcw, Wallet, ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Trash2, UserX, RotateCcw, Wallet, ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
@@ -13,7 +13,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { cn } from "@/lib/cn";
 
-type Cliente = { id: string; nombre: string; rut: string | null; telefono: string | null; ciudad: string | null; activo: boolean };
+type Cliente = { id: string; nombre: string; rut: string | null; telefono: string | null; ciudad: string | null; activo: boolean; eliminable: boolean };
 type SortKey = "nombre" | "estado";
 type SortDir = "asc" | "desc";
 const PAGE_SIZE = 10;
@@ -34,6 +34,9 @@ export function ClientesClient({
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const [aEliminar, setAEliminar] = useState<Cliente | null>(null);
   const [eliminando, setEliminando] = useState(false);
+  // Borrado definitivo (distinto de desactivar): solo clientes sin historial.
+  const [aBorrar, setABorrar] = useState<Cliente | null>(null);
+  const [borrando, setBorrando] = useState(false);
   const [busqueda, setBusqueda] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("nombre");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -123,6 +126,21 @@ export function ClientesClient({
     }
     setOverrides((o) => ({ ...o, [aEliminar.id]: false }));
     setAEliminar(null);
+    router.refresh();
+  }
+
+  async function confirmarBorrar() {
+    if (!aBorrar) return;
+    setError(null);
+    setBorrando(true);
+    const res = await fetch(`/api/clientes/${aBorrar.id}`, { method: "DELETE" });
+    setBorrando(false);
+    setABorrar(null);
+    if (!res.ok) {
+      setError((await res.json().catch(() => null))?.error ?? "No se pudo eliminar el cliente.");
+      router.refresh();
+      return;
+    }
     router.refresh();
   }
 
@@ -233,7 +251,7 @@ export function ClientesClient({
                               aria-label={`Desactivar ${cliente.nombre}`}
                               onClick={() => setAEliminar(cliente)}
                             >
-                              <Trash2 className="h-4 w-4" />
+                              <UserX className="h-4 w-4" />
                             </Button>
                           </Tooltip>
                         )}
@@ -246,6 +264,18 @@ export function ClientesClient({
                               onClick={() => reactivar(cliente)}
                             >
                               <RotateCcw className="h-4 w-4" />
+                            </Button>
+                          </Tooltip>
+                        )}
+                        {puedeEliminar && cliente.eliminable && (
+                          <Tooltip label="Eliminar (no tiene movimientos)" side="left">
+                            <Button
+                              variant="icon"
+                              className="h-8 w-8 hover:text-danger"
+                              aria-label={`Eliminar ${cliente.nombre}`}
+                              onClick={() => setABorrar(cliente)}
+                            >
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </Tooltip>
                         )}
@@ -282,6 +312,17 @@ export function ClientesClient({
         loading={eliminando}
         onConfirm={confirmarEliminar}
         onCancel={() => setAEliminar(null)}
+      />
+
+      <ConfirmDialog
+        open={aBorrar !== null}
+        title="Eliminar cliente"
+        message={aBorrar ? `¿Eliminar definitivamente a "${aBorrar.nombre}"? No tiene ventas ni movimientos. Esta acción no se puede deshacer.` : ""}
+        confirmLabel="Eliminar"
+        variant="danger"
+        loading={borrando}
+        onConfirm={confirmarBorrar}
+        onCancel={() => setABorrar(null)}
       />
     </div>
   );

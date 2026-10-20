@@ -3,6 +3,23 @@ import { prisma } from "@/lib/db";
 import { requirePermiso } from "@/lib/tenant";
 import { tienePermiso } from "@/lib/permisos";
 import { modificarClienteSchema } from "@/lib/schemas-catalogo";
+import { eliminarCliente } from "@/lib/clientes";
+import { manejarErrorNegocio } from "@/lib/errores-negocio";
+
+// Borrado definitivo, solo si el cliente no tiene ventas ni movimientos
+// de cuenta corriente (ver eliminarCliente). Es distinto de desactivar,
+// que se hace con PATCH { activo: false }.
+export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+  const resultado = await requirePermiso("clientes", "eliminar");
+  if (!resultado.ok) return NextResponse.json({ error: "No autorizado." }, { status: resultado.status });
+
+  try {
+    await eliminarCliente(resultado.contexto.ferreteriaId, params.id, resultado.contexto.usuarioId);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return manejarErrorNegocio(error);
+  }
+}
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const body = await req.json().catch(() => null);
