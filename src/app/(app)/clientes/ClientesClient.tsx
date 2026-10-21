@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, UserX, RotateCcw, Wallet, ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Trash2, UserX, Merge, RotateCcw, Wallet, ArrowUpDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
@@ -12,6 +12,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { cn } from "@/lib/cn";
+import { UnirClienteDialog } from "./UnirClienteDialog";
 
 type Cliente = { id: string; nombre: string; rut: string | null; telefono: string | null; ciudad: string | null; activo: boolean; eliminable: boolean };
 type SortKey = "nombre" | "estado";
@@ -37,6 +38,9 @@ export function ClientesClient({
   // Borrado definitivo (distinto de desactivar): solo clientes sin historial.
   const [aBorrar, setABorrar] = useState<Cliente | null>(null);
   const [borrando, setBorrando] = useState(false);
+  // Unir un duplicado con el cliente correcto.
+  const [aUnir, setAUnir] = useState<Cliente | null>(null);
+  const [mensajeOk, setMensajeOk] = useState<string | null>(null);
   const [busqueda, setBusqueda] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("nombre");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -156,6 +160,7 @@ export function ClientesClient({
       />
 
       {error && <Alert>{error}</Alert>}
+      {mensajeOk && <Alert variant="success">{mensajeOk}</Alert>}
 
       <div className="flex items-center gap-4">
         <Input
@@ -243,6 +248,18 @@ export function ClientesClient({
                             </Button>
                           </Tooltip>
                         )}
+                        {puedeEliminar && (
+                          <Tooltip label="Unir con otro cliente (duplicado)" side="left">
+                            <Button
+                              variant="icon"
+                              className="h-8 w-8"
+                              aria-label={`Unir ${cliente.nombre} con otro cliente`}
+                              onClick={() => { setMensajeOk(null); setAUnir(cliente); }}
+                            >
+                              <Merge className="h-4 w-4" />
+                            </Button>
+                          </Tooltip>
+                        )}
                         {puedeEliminar && cliente.activo && (
                           <Tooltip label="Desactivar" side="left">
                             <Button
@@ -313,6 +330,18 @@ export function ClientesClient({
         onConfirm={confirmarEliminar}
         onCancel={() => setAEliminar(null)}
       />
+
+      {aUnir && (
+        <UnirClienteDialog
+          origen={aUnir}
+          clientes={clientesIniciales}
+          onClose={() => setAUnir(null)}
+          onUnido={(mensaje) => {
+            setMensajeOk(mensaje);
+            router.refresh();
+          }}
+        />
+      )}
 
       <ConfirmDialog
         open={aBorrar !== null}
