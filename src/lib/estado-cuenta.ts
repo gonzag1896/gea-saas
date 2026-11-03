@@ -17,6 +17,8 @@ export type MovimientoCuenta = {
   haber: number | string;
   moneda: Moneda;
   origenTipo: string;
+  // Id del documento que originó el movimiento (la venta, para VENTA_*).
+  origenId?: string | null;
   referencia: string | null;
   anulado: boolean;
   montoRecibido: number | string | null;
@@ -33,6 +35,7 @@ export type FilaEstado = {
   haber: number;
   saldo: number;
   origenTipo: string;
+  origenId: string | null;
   anulado: boolean;
 };
 
@@ -144,6 +147,7 @@ export function armarEstadoCuenta(
       haber,
       saldo,
       origenTipo: m.origenTipo,
+      origenId: m.origenId ?? null,
       anulado: m.anulado,
     });
   }
@@ -154,4 +158,117 @@ export function armarEstadoCuenta(
 export function formatearDia(iso: string): string {
   const [a, m, d] = iso.split("-");
   return `${d}/${m}/${a}`;
+}
+
+// ---------------------------------------------------------------------------
+// Detalle de compras (lo que el cliente compró) para acompañar el estado de
+// cuenta. Las ventas listadas son EXACTAMENTE las que tienen un cargo (Debe)
+// en el estado del período descargado, así los montos coinciden con él.
+// ---------------------------------------------------------------------------
+
+// Acepta también los Decimal de Prisma (se leen con Number()).
+type Numerico = number | string | { toString(): string };
+
+export type VentaParaDetalle = {
+  id: string;
+  fecha: Date | string;
+  medioPago: string;
+  estado: string;
+  subtotalUYU: Numerico;
+  ivaUYU: Numerico;
+  totalUYU: Numerico;
+  subtotalUSD: Numerico;
+  ivaUSD: Numerico;
+  totalUSD: Numerico;
+  detalle: {
+    cantidad: number;
+    cantidadDevuelta: number;
+    precio: Numerico;
+    moneda: Moneda;
+    descuento: Numerico;
+    tipoIva: string;
+    total: Numerico;
+    producto: { codigo: string; descripcion: string };
+  }[];
+};
+
+export type LineaCompra = {
+  codigo: string;
+  descripcion: string;
+  cantidad: number;
+  devuelta: number;
+  precio: number;
+  moneda: Moneda;
+  descuento: number;
+  iva: boolean;
+  importe: number; // neto de la línea (sin IVA), ya con descuento
+};
+
+export type CompraDetallada = {
+  id: string;
+  numero: string;
+  fecha: string; // YYYY-MM-DD
+  medioPago: string;
+  anulada: boolean;
+  lineas: LineaCompra[];
+  totales: { moneda: Moneda; subtotal: number; iva: number; total: number }[];
+};
+
+const ETIQUETA_MEDIO_PAGO: Record<string, string> = { CONTADO: "Contado", CREDITO: "Crédito", DEBITO: "Débito", TRANSFERENCIA: "Transferencia" };
+export const etiquetaMedioPago = (m: string) => ETIQUETA_MEDIO_PAGO[m] ?? m;
+
+// Ids de las ventas con un cargo en el estado de cuenta (todas las monedas).
+export function idsVentasDelEstado(estados: EstadoMoneda[]): string[] {
+  const ids = new Set<string>();
+  for (const estado of estados) {
+    for (const f of estado.filas) {
+      if ((f.origenTipo === "VENTA_CREDITO" || f.origenTipo === "VENTA_CONTADO") && f.debe > 0 && f.origenId) ids.add(f.origenId);
+    }
+  }
+  return Array.from(ids);
+}
+
+export function armarDetalleCompras(ventas: VentaParaDetalle[], estados: EstadoMoneda[]) {
+  const enEstado = new Set(idsVentasDelEstado(estados));
+
+  const compras: CompraDetallada[] = ventas
+    .filter((v) => enEstado.has(v.id))
+    .map((v) => ({
+      id: v.id,
+      // Mismo número que muestra el ticket de la venta (N.° …), para poder cruzarlos.
+      numero: v.id.slice(-8).toUpperCase(),
+      fecha: dia(v.fecha),
+      medioPago: etiquetaMedioPago(v.medioPago),
+      anulada: v.estado === "ANULADO",
+      lineas: v.detalle.map((l) => ({
+        codigo: l.producto.codigo,
+        descripcion: l.producto.descripcion,
+        cantidad: l.cantidad,
+        devuelta: l.cantidadDevuelta,
+        precio: Number(l.precio),
+        moneda: l.moneda,
+        descuento: Number(l.descuento),
+        iva: l.tipoIva === "TOTAL",
+        importe: Number(l.total),
+      })),
+      totales: (
+        [
+          { moneda: "UYU" as const, subtotal: Number(v.subtotalUYU), iva: Number(v.ivaUYU), total: Number(v.totalUYU) },
+          { moneda: "USD" as const, subtotal: Number(v.subtotalUSD), iva: Number(v.ivaUSD), total: Number(v.totalUSD) },
+        ]
+      ).filter((t) => t.total > 0),
+    }));
+
+  // Lo que el estado de cuenta suma como cargos por ventas, por moneda: es la
+  // referencia contra la que tiene que cerrar el detalle.
+  const totalEstado = { UYU: 0, USD: 0 };
+  for (const estado of estados) {
+    for (const f of estado.filas) {
+      if (f.origenTipo === "VENTA_CREDITO" || f.origenTipo === "VENTA_CONTADO") totalEstado[estado.moneda] = r2(totalEstado[estado.moneda] + f.debe);
+    }
+  }
+  const totalDetalle = { UYU: 0, USD: 0 };
+  for (const c of compras) for (const t of c.totales) totalDetalle[t.moneda] = r2(totalDetalle[t.moneda] + t.total);
+
+  return { compras, totalEstado, totalDetalle, cierra: totalEstado.UYU === totalDetalle.UYU && totalEstado.USD === totalDetalle.USD };
 }

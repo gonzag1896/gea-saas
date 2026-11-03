@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { armarEstadoCuenta, monedasConMovimientos, type MovimientoCuenta, type Periodo, type TipoCuenta } from "@/lib/estado-cuenta";
+import { armarDetalleCompras, armarEstadoCuenta, idsVentasDelEstado, monedasConMovimientos, type EstadoMoneda, type MovimientoCuenta, type Periodo, type TipoCuenta } from "@/lib/estado-cuenta";
 import { generarEstadoCuentaPdf } from "@/lib/estado-cuenta-pdf";
 
 const FECHA_ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -12,6 +12,18 @@ export function periodoDesdeParams(params: URLSearchParams): Periodo {
 
 const sinAcentos = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
 const slug = (s: string) => sinAcentos(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "cuenta";
+
+// Las ventas con cargo en el estado de cuenta (con sus líneas), listas para el
+// detalle de compras, más el control de que sumen lo mismo que el estado.
+export async function detalleComprasDelCliente(ferreteriaId: string, clienteId: string, estados: EstadoMoneda[]) {
+  const ids = idsVentasDelEstado(estados);
+  const ventas = ids.length === 0 ? [] : await prisma.venta.findMany({
+    where: { ferreteriaId, clienteId, id: { in: ids } },
+    orderBy: [{ fecha: "asc" }, { createdAt: "asc" }],
+    include: { detalle: { orderBy: { id: "asc" }, include: { producto: { select: { codigo: true, descripcion: true } } } } },
+  });
+  return armarDetalleCompras(ventas, estados);
+}
 
 // Arma el PDF del estado de cuenta de un cliente o proveedor de ESTA
 // ferretería. Devuelve null si la entidad no existe (o es de otra ferretería).
@@ -55,6 +67,7 @@ export async function generarEstadoCuentaDeEntidad(
     haber: String(f.haber),
     moneda: f.moneda,
     origenTipo: f.origenTipo,
+    origenId: f.origenId,
     referencia: f.referencia,
     anulado: f.origenTipo === tipoOriginal && anulados.has(f.id),
     montoRecibido: f.montoRecibido === null ? null : String(f.montoRecibido),
@@ -63,7 +76,11 @@ export async function generarEstadoCuentaDeEntidad(
   }));
 
   const estados = monedasConMovimientos(movimientos).map((m) => armarEstadoCuenta(tipo, movimientos, m, periodo));
-  const buffer = await generarEstadoCuentaPdf({ tipo, ferreteria, entidad, periodo, estados });
+  // Solo para clientes: el detalle de lo que compró, atado al mismo período.
+  // Son las ventas que tienen un cargo en el estado que se está descargando.
+  const detalleCompras = tipo === "cliente" ? await detalleComprasDelCliente(ferreteriaId, entidadId, estados) : undefined;
+
+  const buffer = await generarEstadoCuentaPdf({ tipo, ferreteria, entidad, periodo, estados, detalleCompras });
   const fecha = new Date().toISOString().slice(0, 10);
   return { buffer, archivo: `estado-de-cuenta-${slug(entidad.nombre)}-${fecha}.pdf` };
 }

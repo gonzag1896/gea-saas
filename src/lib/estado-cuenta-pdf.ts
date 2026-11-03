@@ -1,6 +1,7 @@
 import PDFDocument from "pdfkit";
 import { formatearFechaHoyUruguay } from "@/lib/fecha";
-import { formatearDia, formatearMonto, simboloMoneda, type EstadoMoneda, type Periodo, type TipoCuenta } from "@/lib/estado-cuenta";
+import { formatearDia, formatearMonto, simboloMoneda, type armarDetalleCompras, type EstadoMoneda, type Periodo, type TipoCuenta } from "@/lib/estado-cuenta";
+import { dibujarDetalleCompras } from "@/lib/estado-cuenta-pdf-detalle";
 
 export type DatosEstadoCuentaPdf = {
   tipo: TipoCuenta;
@@ -8,6 +9,8 @@ export type DatosEstadoCuentaPdf = {
   entidad: { nombre: string; rut: string | null; telefono: string | null };
   periodo: Periodo;
   estados: EstadoMoneda[]; // una sección por moneda
+  // Solo clientes: lo que compró en el período, en una página aparte.
+  detalleCompras?: ReturnType<typeof armarDetalleCompras>;
 };
 
 const AZUL = "#0067B8";
@@ -112,6 +115,8 @@ export function generarEstadoCuentaPdf(datos: DatosEstadoCuentaPdf): Promise<Buf
       }
       doc.moveDown(1.2);
     }
+
+    if (datos.detalleCompras) dibujarDetalleCompras(doc, { nombreCliente: entidad.nombre, textoPeriodo: textoPeriodo(datos.periodo) }, datos.detalleCompras);
 
     const paginas = doc.bufferedPageRange();
     for (let i = 0; i < paginas.count; i++) {
