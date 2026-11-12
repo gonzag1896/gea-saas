@@ -1,13 +1,19 @@
 import type { Metadata, Viewport } from "next";
-import { Source_Sans_3 } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "@/components/session-provider";
 import { ToastProvider } from "@/components/ui/Toast";
 
-const sourceSans = Source_Sans_3({
+// ÚNICA tipografía de toda la plataforma. next/font la descarga en la
+// compilación y la sirve desde nuestro propio dominio, así se ve idéntica en
+// todos los equipos y navegadores (sin depender de lo que tenga instalado cada
+// uno ni de un servicio externo). Es una fuente variable: todos los pesos
+// (400-700) salen del mismo archivo. Las cifras usan numerales tabulares (ver
+// globals.css), por eso ya no hace falta una fuente monoespaciada.
+const fuente = Inter({
   subsets: ["latin"],
-  variable: "--font-source-sans",
-  weight: ["400", "500", "600", "700"],
+  variable: "--font-sans",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -36,7 +42,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es">
-      <body className={`${sourceSans.variable} antialiased`}>
+      <body className={`${fuente.variable} antialiased`}>
         <SessionProvider>
           <ToastProvider>{children}</ToastProvider>
         </SessionProvider>

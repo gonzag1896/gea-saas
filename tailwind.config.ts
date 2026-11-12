@@ -9,8 +9,11 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["var(--font-source-sans)", "Arial", "Helvetica", "sans-serif"],
-        mono: ["ui-monospace", "SFMono-Regular", "monospace"],
+        // Una sola familia para todo. `font-mono` (usado en cifras y códigos)
+        // apunta a la MISMA fuente: se ve igual en todos los equipos, y la
+        // alineación de importes la da el numeral tabular (globals.css).
+        sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "Arial", "sans-serif"],
+        mono: ["var(--font-sans)", "ui-sans-serif", "system-ui", "-apple-system", "Segoe UI", "Roboto", "Arial", "sans-serif"],
       },
       colors: {
         background: "var(--background)",
