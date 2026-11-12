@@ -3,6 +3,7 @@ import { Source_Sans_3 } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "@/components/session-provider";
 import { ToastProvider } from "@/components/ui/Toast";
+import { Analytics } from "@vercel/analytics/next";
 
 const sourceSans = Source_Sans_3({
   subsets: ["latin"],
@@ -40,6 +41,7 @@ export default function RootLayout({
         <SessionProvider>
           <ToastProvider>{children}</ToastProvider>
         </SessionProvider>
+        <Analytics />
       </body>
     </html>
   );
