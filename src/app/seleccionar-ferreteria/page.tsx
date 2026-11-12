@@ -18,11 +18,13 @@ export default async function SeleccionarFerreteriaPage() {
   if (!session?.user) redirect("/login");
 
   if (session.user.isSuperAdmin) {
-    const ferreterias = await prisma.ferreteria.findMany({
-      where: { estado: "ACTIVO" },
-      select: { id: true, nombre: true },
+    // Todas, también las que tienen el acceso inhabilitado por cuota vencida:
+    // el Super Admin tiene que poder entrar a verlas (y se marcan para que se vea).
+    const filas = await prisma.ferreteria.findMany({
+      select: { id: true, nombre: true, estado: true },
       orderBy: { nombre: "asc" },
     });
+    const ferreterias = filas.map((f) => ({ id: f.id, nombre: f.estado === "INACTIVO" ? `${f.nombre} · acceso inhabilitado` : f.nombre }));
     return (
       <AuthCard title="Modo soporte" description="Elegí una ferretería para entrar en modo lectura como soporte.">
         <SeleccionarFerreteriaForm items={ferreterias} modoSoporte />

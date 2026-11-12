@@ -11,6 +11,7 @@ import { totalVentasDelMes, totalComprasDelMes, ventasDiarias, comprasPorProveed
 export async function GET(req: Request) {
   const contexto = await obtenerContextoTenant();
   if (!contexto) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+  if (contexto.inhabilitada) return NextResponse.json({ error: "No autorizado." }, { status: 403 });
 
   const url = new URL(req.url);
   const hasta = url.searchParams.get("hasta") ? new Date(url.searchParams.get("hasta")!) : new Date();

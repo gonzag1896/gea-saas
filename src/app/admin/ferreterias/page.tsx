@@ -104,7 +104,7 @@ export default async function AdminFerreteriasPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <p className="truncate font-medium text-foreground">{f.nombre}</p>
-                    {f.estado === "INACTIVO" && <Badge variant="neutral">Inactiva</Badge>}
+                    {f.estado === "INACTIVO" && <Badge variant="danger">Acceso inhabilitado</Badge>}
                   </div>
                   <div className="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1"><Users className="h-3.5 w-3.5" /> {f.cantidadUsuarios}</span>

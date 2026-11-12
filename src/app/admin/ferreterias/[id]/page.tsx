@@ -8,6 +8,7 @@ import { cn } from "@/lib/cn";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { RegistrarPagoFormClient } from "./RegistrarPagoFormClient";
 import { PagosListClient } from "./PagosListClient";
+import { AccesoFerreteriaClient } from "./AccesoFerreteriaClient";
 
 function EstadoVigenciaHero({ vigenciaHasta }: { vigenciaHasta: Date | null }) {
   if (!vigenciaHasta) {
@@ -78,6 +79,13 @@ export default async function DetalleFerreteriaPage({ params }: { params: { id: 
       <PageHeader title={ferreteria.nombre} description="Mensualidad de la plataforma" />
 
       <EstadoVigenciaHero vigenciaHasta={ferreteria.vigenciaHasta} />
+
+      <AccesoFerreteriaClient
+        ferreteriaId={ferreteria.id}
+        nombre={ferreteria.nombre}
+        inhabilitada={ferreteria.estado === "INACTIVO"}
+        pagoVigente={ferreteria.vigenciaHasta !== null && diasHastaUruguay(ferreteria.vigenciaHasta) >= 0}
+      />
 
       <div className="rounded-xl border border-border bg-surface p-5 shadow-card">
         <h3 className="mb-4 text-sm font-semibold text-foreground">Registrar pago</h3>

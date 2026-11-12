@@ -14,7 +14,7 @@ export async function POST(req: Request) {
   const contexto = await obtenerContextoTenant();
   if (!contexto) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
   const permitido = tienePermiso(contexto.rol, "ventas", "crear") || tienePermiso(contexto.rol, "compras", "crear");
-  if (!permitido || contexto.soporte) return NextResponse.json({ error: "No autorizado." }, { status: 403 });
+  if (!permitido || contexto.soporte || contexto.inhabilitada) return NextResponse.json({ error: "No autorizado." }, { status: 403 });
 
   const body = await req.json().catch(() => null);
   const parsed = crearProductoRapidoSchema.safeParse(body);

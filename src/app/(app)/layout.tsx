@@ -1,11 +1,12 @@
 import { redirect } from "next/navigation";
-import { obtenerSesionValidada } from "@/lib/tenant";
-import { prisma } from "@/lib/db";
+import { obtenerAccesoFerreteria, obtenerSesionValidada } from "@/lib/tenant";
 import { diasHastaUruguay, formatearFecha } from "@/lib/fecha";
 import { Sidebar } from "./sidebar";
 import { Header } from "./header";
 import { SidebarMarginAdjuster } from "./sidebar-margin-adjuster";
 import { AvisoVigencia } from "./aviso-vigencia";
+import { AccesoInhabilitado } from "./acceso-inhabilitado";
+import { AvisoAccesoInhabilitadoAdmin } from "./aviso-acceso-inhabilitado-admin";
 
 // Guardia de todo lo que cuelga de (app): sin sesión, con una sesión vieja
 // (contraseña cambiada o membresía revocada después de emitido el token),
@@ -27,20 +28,32 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect("/seleccionar-ferreteria");
   }
 
+  // Estado de acceso de la ferretería (una consulta por request, compartida
+  // con la autorización de las APIs). Si el administrador de la plataforma
+  // la inhabilitó por falta de pago, TODO el equipo ve solo el mensaje de
+  // cuota vencida — sin menú ni pantallas. El Super Admin sí entra (modo
+  // soporte) y ve un cartel que le recuerda que está inhabilitada.
+  const acceso = session.user.ferreteriaId ? await obtenerAccesoFerreteria(session.user.ferreteriaId) : null;
+  if (acceso?.inhabilitada && !session.user.isSuperAdmin) {
+    return (
+      <AccesoInhabilitado
+        ferreteriaNombre={session.user.ferreteriaNombre ?? "tu ferretería"}
+        vencioTexto={acceso.vigenciaHasta ? formatearFecha(acceso.vigenciaHasta) : null}
+        email={session.user.email ?? ""}
+      />
+    );
+  }
+
   // Aviso de vencimiento de la mensualidad de la plataforma: solo al
-  // Dueño (es quien paga), no a Cajero/Depósito ni al Super Admin en
-  // modo soporte. 3 días de antelación o menos, incluyendo si ya venció.
+  // Dueño (es quien paga), no a Cajero/Depósito. También lo ve el Super
+  // Admin en modo soporte (que entra con el rol Dueño prestado), para ver lo
+  // mismo que ve la ferretería. 3 días de antelación o menos, incluyendo si
+  // ya venció.
   let diasParaVencer: number | null = null;
   let vigenciaHasta: Date | null = null;
-  if (session.user.rol === "DUENO" && session.user.ferreteriaId && !session.user.soporte) {
-    const ferreteria = await prisma.ferreteria.findUnique({
-      where: { id: session.user.ferreteriaId },
-      select: { vigenciaHasta: true },
-    });
-    if (ferreteria?.vigenciaHasta) {
-      vigenciaHasta = ferreteria.vigenciaHasta;
-      diasParaVencer = diasHastaUruguay(ferreteria.vigenciaHasta);
-    }
+  if (session.user.rol === "DUENO" && acceso?.vigenciaHasta) {
+    vigenciaHasta = acceso.vigenciaHasta;
+    diasParaVencer = diasHastaUruguay(acceso.vigenciaHasta);
   }
 
   return (
@@ -55,6 +68,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           soporte={session.user.soporte}
           isSuperAdmin={session.user.isSuperAdmin}
         />
+        {acceso?.inhabilitada && session.user.isSuperAdmin && <AvisoAccesoInhabilitadoAdmin />}
         {diasParaVencer !== null && diasParaVencer <= 3 && vigenciaHasta && (
           <AvisoVigencia diasParaVencer={diasParaVencer} vigenciaHastaTexto={formatearFecha(vigenciaHasta)} />
         )}

@@ -11,6 +11,8 @@ import { TicketVentaClient } from "./TicketVentaClient";
 export default async function TicketVentaPage({ params }: { params: { id: string } }) {
   const contexto = await obtenerContextoTenant();
   if (!contexto) redirect("/login");
+  // Acceso inhabilitado por cuota vencida: el layout de (app) muestra el mensaje.
+  if (contexto.inhabilitada) redirect("/dashboard");
   if (!tienePermiso(contexto.rol, "ventas", "ver")) redirect("/ventas");
 
   const [ventaRaw, ferreteria] = await Promise.all([

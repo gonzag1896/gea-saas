@@ -239,3 +239,27 @@ export async function editarPagoPlataforma(
     detalle: { fecha: datos.fecha.toISOString(), monto, esGratis: datos.esGratis ?? false, vigenciaHasta: datos.vigenciaHasta.toISOString() },
   });
 }
+
+// Inhabilita o vuelve a habilitar el acceso de TODA una ferretería (falta de
+// pago). Usa Ferreteria.estado: INACTIVO = acceso inhabilitado. No borra ni
+// toca ningún dato: sus usuarios dejan de poder usar el sistema y ven un
+// mensaje de cuota vencida; al habilitarla vuelven a entrar como antes. Lo
+// hace el Super Admin de la plataforma (ver la ruta /api/admin/.../acceso).
+export async function cambiarAccesoFerreteria(ferreteriaId: string, habilitado: boolean, usuarioId: string) {
+  const ferreteria = await prisma.ferreteria.findUnique({ where: { id: ferreteriaId }, select: { id: true, nombre: true, estado: true } });
+  if (!ferreteria) throw new EntidadNoEncontradaError("Ferretería no encontrada.");
+
+  const nuevoEstado = habilitado ? "ACTIVO" : "INACTIVO";
+  if (ferreteria.estado === nuevoEstado) return { estado: nuevoEstado as "ACTIVO" | "INACTIVO", cambio: false };
+
+  await prisma.ferreteria.update({ where: { id: ferreteriaId }, data: { estado: nuevoEstado } });
+  await auditar({
+    accion: habilitado ? "FERRETERIA_ACCESO_HABILITA" : "FERRETERIA_ACCESO_INHABILITA",
+    usuarioId,
+    ferreteriaId,
+    entidad: "Ferreteria",
+    entidadId: ferreteriaId,
+    detalle: { nombre: ferreteria.nombre },
+  });
+  return { estado: nuevoEstado as "ACTIVO" | "INACTIVO", cambio: true };
+}

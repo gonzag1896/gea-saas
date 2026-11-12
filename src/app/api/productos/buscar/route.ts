@@ -15,6 +15,7 @@ const LIMITE = 20;
 export async function GET(req: Request) {
   const contexto = await obtenerContextoTenant();
   if (!contexto) return NextResponse.json({ error: "No autorizado." }, { status: 401 });
+  if (contexto.inhabilitada) return NextResponse.json({ error: "No autorizado." }, { status: 403 });
   const permitido =
     tienePermiso(contexto.rol, "ventas", "crear") ||
     tienePermiso(contexto.rol, "compras", "crear") ||
