@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { SessionProvider } from "@/components/session-provider";
 import { ToastProvider } from "@/components/ui/Toast";
+import { Analytics } from "@vercel/analytics/next";
 
 // ÚNICA tipografía de toda la plataforma. next/font la descarga en la
 // compilación y la sirve desde nuestro propio dominio, así se ve idéntica en
@@ -46,6 +47,7 @@ export default function RootLayout({
         <SessionProvider>
           <ToastProvider>{children}</ToastProvider>
         </SessionProvider>
+        <Analytics />
       </body>
     </html>
   );
